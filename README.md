@@ -1,7 +1,8 @@
 # rtsp-over-tcp-server
 * 仅支持rtp over tcp，视频文件格式mp4，视频编码格式H264，可以包含音频，但是rtsp_server只会回放视频，有多个rtsp客户端请求同一个视频时，不同客户端收到的视频是同步的。
 * 使用epoll发送数据。
-![设计图](https://github.com/BreakingY/rtsp-over-tcp-server/assets/99859929/c3304487-5d7d-4e0e-b737-cb988df20dfa)
+![Uploading rtsp测试服务器设计.jpg…]()
+
 
 
 
