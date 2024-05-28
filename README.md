@@ -13,6 +13,7 @@
 * cmake ..
 * make -j
 * cp -r ../mp4path .
+* ./rtsp_server
 
 # RTSP拉流
 * 把要回放的视频放到mp4path中，通过rtsp://ip:8554/mp4文件名字即可回放
