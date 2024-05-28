@@ -1,7 +1,12 @@
+#include "common.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/log.h>
+#include <libavutil/time.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +15,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "common.h"
 int createTcpSocket()
 {
     int sockfd;
@@ -100,24 +104,8 @@ int handleCmd_OPTIONS(char *result, int cseq)
 
     return 0;
 }
-int handleCmd_DESCRIBE(char *result, int cseq, char *url)
+int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp)
 {
-    char sdp[500];
-    char localIp[100];
-
-    sscanf(url, "rtsp://%[^:]:", localIp);
-
-    sprintf(sdp, "v=0\r\n"
-                 "o=- 9%ld 1 IN IP4 %s\r\n"
-                 "t=0 0\r\n"
-                 "a=control:*\r\n"
-                 "m=video 0 RTP/AVP 96\r\n"
-                 "a=rtpmap:96 H264/90000\r\n"
-                 //"a=fmtp:96 profile-level-id=42A01E; packetization-mode=1; sprop-parameter-sets=Z0IACpZTBYmI,aMljiA==\r\n"
-                 "a=fmtp:96 packetization-mode=1\r\n"
-                 "a=control:track0\r\n",
-            time(NULL), localIp);
-
     sprintf(result, "RTSP/1.0 200 OK\r\nCSeq: %d\r\n"
                     "Content-Base: %s\r\n"
                     "Content-type: application/sdp\r\n"
@@ -145,8 +133,22 @@ int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientIp, i
 
     return 0;
 }
-// RTP-Info: url=rtsp://192.168.178.128/track0;seq=61622;rtptime=1335382752
-int handleCmd_PLAY_TCP(char *result, int cseq, char *url_setup)
+int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort)
+{
+    sprintf(result, "RTSP/1.0 200 OK\r\n"
+                    "CSeq: %d\r\n"
+                    "Transport: RTP/AVP;unicast;client_port=%d-%d;server_port=%d-%d\r\n"
+                    "Session: 66334873\r\n"
+                    "\r\n",
+            cseq,
+            clientRtpPort,
+            clientRtpPort + 1,
+            serverRtpPort,
+            serverRtpPort + 1);
+
+    return 0;
+}
+int handleCmd_PLAY(char *result, int cseq, char *url_setup)
 {
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
@@ -164,5 +166,122 @@ int handleCmd_404(char *result, int cseq)
                     "\r\n",
             cseq);
 
+    return 0;
+}
+int check_media_info(const char *filename, MediaInfo *info)
+{
+    AVFormatContext *format_ctx = NULL;
+    int ret;
+
+    if ((ret = avformat_open_input(&format_ctx, filename, NULL, NULL)) < 0) {
+        fprintf(stderr, "Could not open source file %s\n", filename);
+        return ret;
+    }
+    if ((ret = avformat_find_stream_info(format_ctx, NULL)) < 0) {
+        fprintf(stderr, "Could not find stream information\n");
+        avformat_close_input(&format_ctx);
+        return ret;
+    }
+
+    info->has_audio = 0;
+    info->has_video = 0;
+    info->is_video_h264 = 0;
+    info->is_audio_aac = 0;
+    info->audio_sample_rate = 0;
+    info->audio_channels = 0;
+    info->sps = NULL;
+    info->pps = NULL;
+    info->sps_size = 0;
+    info->pps_size = 0;
+
+    for (unsigned int i = 0; i < format_ctx->nb_streams; i++) {
+        AVStream *stream = format_ctx->streams[i];
+        AVCodecParameters *codecpar = stream->codecpar;
+
+        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            info->has_video = 1;
+            if (codecpar->codec_id == AV_CODEC_ID_H264) {
+                info->is_video_h264 = 1;
+
+                /*if (codecpar->extradata_size > 0 && codecpar->extradata) {
+                    uint8_t *extradata = codecpar->extradata;
+                    int extradata_size = codecpar->extradata_size;
+                    int i = 0;
+                    while (i < extradata_size) {
+                        int nal_unit_type = extradata[i] & 0x1F;
+                        int nal_unit_size = (extradata[i + 1] << 8) | extradata[i + 2];
+                        if (nal_unit_type == 7) { // SPS
+                            info->sps_size = nal_unit_size;
+                            info->sps = (uint8_t *)malloc(info->sps_size);
+                            memcpy(info->sps, &extradata[i + 3], info->sps_size);
+                        } else if (nal_unit_type == 8) { // PPS
+                            info->pps_size = nal_unit_size;
+                            info->pps = (uint8_t *)malloc(info->pps_size);
+                            memcpy(info->pps, &extradata[i + 3], info->pps_size);
+                        }
+                        i += 3 + nal_unit_size;
+                    }
+                }*/
+            }
+        } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            info->has_audio = 1;
+            if (codecpar->codec_id == AV_CODEC_ID_AAC) {
+                info->is_audio_aac = 1;
+                info->audio_sample_rate = codecpar->sample_rate;
+                info->audio_channels = codecpar->channels;
+            }
+        }
+    }
+    avformat_close_input(&format_ctx);
+
+    return 0;
+}
+void free_media_info(MediaInfo *info)
+{
+    if (info->sps) {
+        free(info->sps);
+    }
+    if (info->pps) {
+        free(info->pps);
+    }
+}
+int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
+{
+    memset(buffer, 0, buffer_len);
+    MediaInfo info;
+    if (check_media_info(file, &info) != 0) {
+        printf("server error\n");
+        exit(0);
+    }
+    if (info.has_video && !info.is_video_h264) {
+        printf("only support h264\n");
+        exit(0);
+    }
+    if (info.has_audio && !info.is_audio_aac) {
+        printf("only support aac\n");
+        exit(0);
+    }
+    sprintf(buffer, "v=0\r\n"
+                    "o=- 9%ld 1 IN IP4 %s\r\n"
+                    "c=IN IP4 %s\r\n"
+                    "t=0 0\r\n"
+                    "a=control:*\r\n",
+            time(NULL), localIp, localIp);
+    if (info.has_video) {
+        sprintf(buffer + strlen(buffer), "m=video 0 RTP/AVP %d\r\n"
+                                         "a=rtpmap:%d H264/90000\r\n"
+                                         //"a=fmtp:%d profile-level-id=42A01E; packetization-mode=1; sprop-parameter-sets=Z0IACpZTBYmI,aMljiA==\r\n"
+                                         "a=fmtp:%d packetization-mode=1\r\n"
+                                         "a=control:track0\r\n",
+                RTP_PAYLOAD_TYPE_H264, RTP_PAYLOAD_TYPE_H264, RTP_PAYLOAD_TYPE_H264);
+    }
+    if (info.has_audio) {
+        sprintf(buffer + strlen(buffer), "m=audio 0 RTP/AVP %d\r\n"
+                                         "a=rtpmap:%d MPEG4-GENERIC/%u/%u\r\n"
+                                         "a=fmtp:%d profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3\r\n"
+                                         "a=control:track1\r\n",
+                RTP_PAYLOAD_TYPE_AAC, RTP_PAYLOAD_TYPE_AAC, info.audio_sample_rate, info.audio_channels, RTP_PAYLOAD_TYPE_AAC);
+    }
+    free_media_info(&info);
     return 0;
 }

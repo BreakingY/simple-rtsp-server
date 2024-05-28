@@ -83,7 +83,18 @@ struct rtp_tcp_header {
     uint8_t channel; // 0-1
     uint16_t rtp_len16;
 };
-
+typedef struct {
+    int has_audio;
+    int has_video;
+    int is_video_h264;
+    int is_audio_aac;
+    int audio_sample_rate;
+    int audio_channels;
+    uint8_t *sps;
+    int sps_size;
+    uint8_t *pps;
+    int pps_size;
+} MediaInfo;
 int createTcpSocket();
 int createUdpSocket();
 int bindSocketAddr(int sockfd, const char *ip, int port);
@@ -94,9 +105,14 @@ void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extensi
 char *getLineFromBuf(char *buf, char *line);
 
 int handleCmd_OPTIONS(char *result, int cseq);
-int handleCmd_DESCRIBE(char *result, int cseq, char *url);
+int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp);
 int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientip, int sig_0);
-int handleCmd_PLAY_TCP(char *result, int cseq, char *url);
+int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort);
+int handleCmd_PLAY(char *result, int cseq, char *url);
 int handleCmd_404(char *result, int cseq);
+
+int check_media_info(const char *filename, MediaInfo *info);
+void free_media_info(MediaInfo *info);
+int generateSDP(char *file, char *localIp, char *buffer, int buffer_len);
 
 #endif
