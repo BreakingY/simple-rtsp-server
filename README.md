@@ -1,5 +1,6 @@
 # simple-rtsp-server
-* 支持rtp over udp、rtp over tcp，视频文件格式mp4，支持H264、AAC ，有多个rtsp客户端请求同一个视频时，不同客户端收到的视频是同步的。文件结束时将断开客户端连接，需要客户端加上重连机制。
+* 从mp4文件中读取音视频发送给客户端，支持H264、H265、AAC。
+* 支持rtp over udp、rtp over tcp，多个rtsp客户端请求同一个视频时，不同客户端收到的视频是同步的(模拟真实摄像头)。文件结束时将断开客户端连接，需要客户端加上重连机制。
 * 使用epoll发送数据。
 * ffmpeg版本 >= 4.x。
 ![rtsp测试服务器设计](https://github.com/BreakingY/rtsp-over-tcp-server/assets/99859929/33526b42-d5ea-4c58-8cbe-fb5dc0fd8a35)
