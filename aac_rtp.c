@@ -7,7 +7,7 @@ static uint32_t getTimestamp(uint32_t sample_rate)
     // 时钟频率是1秒内的频率，比如视频时90000HZ,1ms的话就是90HZ
     // 这种计算方式和ts+=时钟频率/帧率(此时ts需要初始值，一般为0)计算出来的帧之间的时间戳增量是一样 ，但是用系统时间计算rtp的时间能够准确的反应当前帧的采集时间(rtsp/rtp时间基下的时间)
     // clockRate/1000是转换成ms
-    uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // 90: clockRate/1000;
+    uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // clockRate/1000;
     return ts;
 }
 const int sampling_frequencies[] = {
