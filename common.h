@@ -5,7 +5,7 @@
 
 #define RTP_VESION 2 // 版本
 
-#define RTP_PAYLOAD_TYPE_H264 96 // 媒体类型-视频
+#define RTP_PAYLOAD_TYPE_H26X 96 // 媒体类型-视频
 #define RTP_PAYLOAD_TYPE_AAC 97  // 媒体类型-音频
 
 #define RTP_HEADER_SIZE 12 // 头部大小
@@ -52,7 +52,8 @@
 
 *贡献源列表（CSRC List）：0～15项，每项32比特，用来标志对一个RTP混合器产生的新包有贡献的所有RTP包的源。由混合器将这些有贡献的SSRC标识符插入表中。SSRC标识符都被列出来，以便接收端能正确指出交谈双方的身份
 */
-struct RtpHeader {
+struct RtpHeader
+{
     /* byte 0 */
     uint8_t csrcLen : 4;
     uint8_t extension : 1;
@@ -73,20 +74,29 @@ struct RtpHeader {
     uint32_t ssrc;
 };
 
-struct RtpPacket {
+struct RtpPacket
+{
     struct RtpHeader rtpHeader;
     uint8_t payload[0];
 };
 
-struct rtp_tcp_header {
+struct rtp_tcp_header
+{
     uint8_t magic;   // $
     uint8_t channel; // 0-1
     uint16_t rtp_len16;
 };
-typedef struct {
+enum VIDEOTYPE
+{
+    H264 = 1,
+    H265,
+};
+typedef struct
+{
     int has_audio;
     int has_video;
-    int is_video_h264;
+    int is_video_h26x;
+    enum VIDEOTYPE type;
     int is_audio_aac;
     int audio_sample_rate;
     int audio_channels;
@@ -110,6 +120,7 @@ int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientip, i
 int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort);
 int handleCmd_PLAY(char *result, int cseq, char *url);
 int handleCmd_404(char *result, int cseq);
+int handleCmd_500(char *result, int cseq);
 
 int check_media_info(const char *filename, MediaInfo *info);
 void free_media_info(MediaInfo *info);

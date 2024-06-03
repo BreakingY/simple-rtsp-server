@@ -37,13 +37,16 @@ static int adts_header(char *const p_adts_header, const int data_length,
 
     int frequencies_size = sizeof(sampling_frequencies) / sizeof(sampling_frequencies[0]);
     int i = 0;
-    for (i = 0; i < frequencies_size; i++) {
-        if (sampling_frequencies[i] == samplerate) {
+    for (i = 0; i < frequencies_size; i++)
+    {
+        if (sampling_frequencies[i] == samplerate)
+        {
             sampling_frequency_index = i;
             break;
         }
     }
-    if (i >= frequencies_size) {
+    if (i >= frequencies_size)
+    {
         printf("unsupport samplerate:%d\n", samplerate);
         return -1;
     }
@@ -95,22 +98,28 @@ int rtpSendAACFrame(int fd, struct rtp_tcp_header *tcp_header, struct RtpPacket 
     int ret;
     int send_bytes = 0;
     struct sockaddr_in addr;
-    if (tcp_header != NULL && sig != -1) { // tcp
+    if (tcp_header != NULL && sig != -1)
+    { // tcp
         tcp_header->magic = '$';
         tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)size + 4;
 
         tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
         tcp_header->channel = sig;
         ret = send(fd, tcp_header, sizeof(struct rtp_tcp_header), 0);
-        if (ret <= 0) {
+        if (ret <= 0)
+        {
             return -1;
         }
-    } else if (client_ip != NULL && client_rtp_port != -1) { // udp
+    }
+    else if (client_ip != NULL && client_rtp_port != -1)
+    { // udp
 
         addr.sin_family = AF_INET;
         addr.sin_port = htons(client_rtp_port);
         addr.sin_addr.s_addr = inet_addr(client_ip);
-    } else {
+    }
+    else
+    {
         printf("parameter error\n");
         return -1;
     }
@@ -125,12 +134,16 @@ int rtpSendAACFrame(int fd, struct rtp_tcp_header *tcp_header, struct RtpPacket 
     rtp_packet->payload[2] = (size & 0x1FE0) >> 5; // 高8位
     rtp_packet->payload[3] = (size & 0x1F) << 3;   // 低5位
     memcpy(rtp_packet->payload + 4, data, size);
-    if (tcp_header != NULL && sig != -1) { // tcp
+    if (tcp_header != NULL && sig != -1)
+    { // tcp
         ret = send(fd, rtp_packet, RTP_HEADER_SIZE + size + 4, 0);
-    } else if (client_ip != NULL && client_rtp_port != -1) { // udp
+    }
+    else if (client_ip != NULL && client_rtp_port != -1)
+    { // udp
         ret = sendto(fd, (void *)rtp_packet, RTP_HEADER_SIZE + size + 4, 0, (struct sockaddr *)&addr, sizeof(addr));
     }
-    if (ret <= 0) {
+    if (ret <= 0)
+    {
         return -1;
     }
     send_bytes += ret;

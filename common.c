@@ -55,7 +55,8 @@ int acceptClient(int sockfd, char *ip, int *port)
     memset(&addr, 0, sizeof(addr));
     len = sizeof(addr);
     clientfd = accept(sockfd, (struct sockaddr *)&addr, &len);
-    if (clientfd < 0) {
+    if (clientfd < 0)
+    {
         printf("accept err:%s\n", strerror(errno));
         return -1;
     }
@@ -81,7 +82,8 @@ void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extensi
 
 char *getLineFromBuf(char *buf, char *line)
 {
-    while (*buf != '\n') {
+    while (*buf != '\n')
+    {
         *line = *buf;
         line++;
         buf++;
@@ -168,16 +170,27 @@ int handleCmd_404(char *result, int cseq)
 
     return 0;
 }
+int handleCmd_500(char *result, int cseq)
+{
+    sprintf(result, "RTSP/1.0 500 SERVER ERROR\r\n"
+                    "CSeq: %d\r\n"
+                    "\r\n",
+            cseq);
+
+    return 0;
+}
 int check_media_info(const char *filename, MediaInfo *info)
 {
     AVFormatContext *format_ctx = NULL;
     int ret;
 
-    if ((ret = avformat_open_input(&format_ctx, filename, NULL, NULL)) < 0) {
+    if ((ret = avformat_open_input(&format_ctx, filename, NULL, NULL)) < 0)
+    {
         fprintf(stderr, "Could not open source file %s\n", filename);
         return ret;
     }
-    if ((ret = avformat_find_stream_info(format_ctx, NULL)) < 0) {
+    if ((ret = avformat_find_stream_info(format_ctx, NULL)) < 0)
+    {
         fprintf(stderr, "Could not find stream information\n");
         avformat_close_input(&format_ctx);
         return ret;
@@ -185,7 +198,7 @@ int check_media_info(const char *filename, MediaInfo *info)
 
     info->has_audio = 0;
     info->has_video = 0;
-    info->is_video_h264 = 0;
+    info->is_video_h26x = 0;
     info->is_audio_aac = 0;
     info->audio_sample_rate = 0;
     info->audio_channels = 0;
@@ -194,38 +207,28 @@ int check_media_info(const char *filename, MediaInfo *info)
     info->sps_size = 0;
     info->pps_size = 0;
 
-    for (unsigned int i = 0; i < format_ctx->nb_streams; i++) {
+    for (unsigned int i = 0; i < format_ctx->nb_streams; i++)
+    {
         AVStream *stream = format_ctx->streams[i];
         AVCodecParameters *codecpar = stream->codecpar;
 
-        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+        {
             info->has_video = 1;
-            if (codecpar->codec_id == AV_CODEC_ID_H264) {
-                info->is_video_h264 = 1;
-
-                /*if (codecpar->extradata_size > 0 && codecpar->extradata) {
-                    uint8_t *extradata = codecpar->extradata;
-                    int extradata_size = codecpar->extradata_size;
-                    int i = 0;
-                    while (i < extradata_size) {
-                        int nal_unit_type = extradata[i] & 0x1F;
-                        int nal_unit_size = (extradata[i + 1] << 8) | extradata[i + 2];
-                        if (nal_unit_type == 7) { // SPS
-                            info->sps_size = nal_unit_size;
-                            info->sps = (uint8_t *)malloc(info->sps_size);
-                            memcpy(info->sps, &extradata[i + 3], info->sps_size);
-                        } else if (nal_unit_type == 8) { // PPS
-                            info->pps_size = nal_unit_size;
-                            info->pps = (uint8_t *)malloc(info->pps_size);
-                            memcpy(info->pps, &extradata[i + 3], info->pps_size);
-                        }
-                        i += 3 + nal_unit_size;
-                    }
-                }*/
+            if (codecpar->codec_id == AV_CODEC_ID_H264 || codecpar->codec_id == AV_CODEC_ID_H265 || codecpar->codec_id == AV_CODEC_ID_HEVC)
+            {
+                info->is_video_h26x = 1;
+                if (codecpar->codec_id == AV_CODEC_ID_H264)
+                    info->type = H264;
+                else
+                    info->type = H265;
             }
-        } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+        }
+        else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+        {
             info->has_audio = 1;
-            if (codecpar->codec_id == AV_CODEC_ID_AAC) {
+            if (codecpar->codec_id == AV_CODEC_ID_AAC)
+            {
                 info->is_audio_aac = 1;
                 info->audio_sample_rate = codecpar->sample_rate;
                 info->audio_channels = codecpar->channels;
@@ -238,10 +241,12 @@ int check_media_info(const char *filename, MediaInfo *info)
 }
 void free_media_info(MediaInfo *info)
 {
-    if (info->sps) {
+    if (info->sps)
+    {
         free(info->sps);
     }
-    if (info->pps) {
+    if (info->pps)
+    {
         free(info->pps);
     }
 }
@@ -249,17 +254,20 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
 {
     memset(buffer, 0, buffer_len);
     MediaInfo info;
-    if (check_media_info(file, &info) != 0) {
+    if (check_media_info(file, &info) != 0)
+    {
         printf("server error\n");
-        exit(0);
+        return -1;
     }
-    if (info.has_video && !info.is_video_h264) {
+    if (info.has_video && !info.is_video_h26x)
+    {
         printf("only support h264\n");
-        exit(0);
+        return -1;
     }
-    if (info.has_audio && !info.is_audio_aac) {
+    if (info.has_audio && !info.is_audio_aac)
+    {
         printf("only support aac\n");
-        exit(0);
+        return -1;
     }
     sprintf(buffer, "v=0\r\n"
                     "o=- 9%ld 1 IN IP4 %s\r\n"
@@ -267,15 +275,17 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
                     "t=0 0\r\n"
                     "a=control:*\r\n",
             time(NULL), localIp, localIp);
-    if (info.has_video) {
+    if (info.has_video)
+    {
         sprintf(buffer + strlen(buffer), "m=video 0 RTP/AVP %d\r\n"
-                                         "a=rtpmap:%d H264/90000\r\n"
+                                         "a=rtpmap:%d %s/90000\r\n"
                                          //"a=fmtp:%d profile-level-id=42A01E; packetization-mode=1; sprop-parameter-sets=Z0IACpZTBYmI,aMljiA==\r\n"
                                          "a=fmtp:%d packetization-mode=1\r\n"
                                          "a=control:track0\r\n",
-                RTP_PAYLOAD_TYPE_H264, RTP_PAYLOAD_TYPE_H264, RTP_PAYLOAD_TYPE_H264);
+                RTP_PAYLOAD_TYPE_H26X, RTP_PAYLOAD_TYPE_H26X, info.type == H264 ? "H264" : "H265", RTP_PAYLOAD_TYPE_H26X);
     }
-    if (info.has_audio) {
+    if (info.has_audio)
+    {
         sprintf(buffer + strlen(buffer), "m=audio 0 RTP/AVP %d\r\n"
                                          "a=rtpmap:%d MPEG4-GENERIC/%u/%u\r\n"
                                          "a=fmtp:%d profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3\r\n"

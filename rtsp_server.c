@@ -10,7 +10,8 @@
 #define BUF_MAX_SIZE (1024 * 1024)
 char *mp4Dir = "mp4path/\0"; // MP4文件存放位置
 /*doClientThd线程参数*/
-struct thd_arg_st {
+struct thd_arg_st
+{
     int client_sock_fd;
     char client_ip[30];
     int client_port;
@@ -22,13 +23,15 @@ int create_rtp_sockets(int *fd1, int *fd2, int *port1, int *port2)
     int port = 0;
 
     *fd1 = socket(AF_INET, SOCK_DGRAM, 0);
-    if (*fd1 < 0) {
+    if (*fd1 < 0)
+    {
         perror("socket");
         return -1;
     }
 
     *fd2 = socket(AF_INET, SOCK_DGRAM, 0);
-    if (*fd2 < 0) {
+    if (*fd2 < 0)
+    {
         perror("socket");
         close(*fd1);
         return -1;
@@ -38,11 +41,14 @@ int create_rtp_sockets(int *fd1, int *fd2, int *port1, int *port2)
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    for (port = 1024; port <= 65535; port += 2) {
+    for (port = 1024; port <= 65535; port += 2)
+    {
         addr.sin_port = htons(port);
-        if (bind(*fd1, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+        if (bind(*fd1, (struct sockaddr *)&addr, sizeof(addr)) == 0)
+        {
             addr.sin_port = htons(port + 1);
-            if (bind(*fd2, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            if (bind(*fd2, (struct sockaddr *)&addr, sizeof(addr)) == 0)
+            {
                 *port1 = port;
                 *port2 = port + 1;
                 return 0;
@@ -113,7 +119,8 @@ void *doClientThd(void *arg)
     path_tmp[strlen(mp4Dir)] = '\0';
 
     int fd;
-    while (1) {
+    while (1)
+    {
         int recv_len;
 
         recv_len = recv(client_sock_fd, recv_buf, BUF_MAX_SIZE, 0);
@@ -128,16 +135,20 @@ void *doClientThd(void *arg)
         buf_ptr = getLineFromBuf(recv_buf, line);
         buf_tmp = buf_ptr;
 
-        if (sscanf(line, "%s %s %s\r\n", method, url, version) != 3) {
+        if (sscanf(line, "%s %s %s\r\n", method, url, version) != 3)
+        {
             printf("parse err\n");
             goto out;
         }
 
         /*解析序列号*/
-        while (1) {
+        while (1)
+        {
             buf_ptr = getLineFromBuf(buf_ptr, line);
-            if (!strncmp(line, "CSeq:", strlen("CSeq:"))) {
-                if (sscanf(line, "CSeq: %d\r\n", &cseq) != 1) {
+            if (!strncmp(line, "CSeq:", strlen("CSeq:")))
+            {
+                if (sscanf(line, "CSeq: %d\r\n", &cseq) != 1)
+                {
                     printf("parse err\n");
                     goto out;
                 }
@@ -146,50 +157,66 @@ void *doClientThd(void *arg)
         }
 
         /* 如果是SETUP,需要解析是RTP_OVER_TCP还是RTP_OVER_UDP模式 */
-        if (!strcmp(method, "SETUP")) {
+        if (!strcmp(method, "SETUP"))
+        {
             memset(url_setup, 0, sizeof(url_setup));
             memset(track, 0, sizeof(track));
             strcpy(url_setup, url);
             char *p = strrchr(url_setup, ch);
             memcpy(track, p + 1, strlen(p)); // video-track0 audio -track1
-            while (1) {
+            while (1)
+            {
                 buf_tmp = getLineFromBuf(buf_tmp, line);
 
-                if (!buf_tmp) {
+                if (!buf_tmp)
+                {
                     break;
                 }
 
-                if (!strncmp(line, "Transport: RTP/AVP/TCP", strlen("Transport: RTP/AVP/TCP"))) {
+                if (!strncmp(line, "Transport: RTP/AVP/TCP", strlen("Transport: RTP/AVP/TCP")))
+                {
 
-                    if (memcmp(track, "track0", 6) == 0) {
+                    if (memcmp(track, "track0", 6) == 0)
+                    {
                         sscanf(line, "Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n", &sig_0, &sig_1);
-                    } else {
+                    }
+                    else
+                    {
                         sscanf(line, "Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n", &sig_2, &sig_3);
                     }
 
                     ture_of_rtp_tcp = 1;
                     break;
                 }
-                if (!strncmp(line, "Transport: RTP/AVP/UDP", strlen("Transport: RTP/AVP/UDP"))) {
-                    if (memcmp(track, "track0", 6) == 0) {
+                if (!strncmp(line, "Transport: RTP/AVP/UDP", strlen("Transport: RTP/AVP/UDP")))
+                {
+                    if (memcmp(track, "track0", 6) == 0)
+                    {
                         sscanf(line, "Transport: RTP/AVP/UDP;unicast;client_port=%d-%d\r\n", &client_rtp_port, &client_rtcp_port);
-                    } else {
+                    }
+                    else
+                    {
                         sscanf(line, "Transport: RTP/AVP/UDP;unicast;client_port=%d-%d\r\n", &client_rtp_port_1, &client_rtcp_port_1);
                     }
                     break;
                 }
-                if (!strncmp(line, "Transport: RTP/AVP", strlen("Transport: RTP/AVP"))) {
+                if (!strncmp(line, "Transport: RTP/AVP", strlen("Transport: RTP/AVP")))
+                {
 
-                    if (memcmp(track, "track0", 6) == 0) {
+                    if (memcmp(track, "track0", 6) == 0)
+                    {
                         sscanf(line, "Transport: RTP/AVP;unicast;client_port=%d-%d\r\n", &client_rtp_port, &client_rtcp_port);
-                    } else {
+                    }
+                    else
+                    {
                         sscanf(line, "Transport: RTP/AVP;unicast;client_port=%d-%d\r\n", &client_rtp_port_1, &client_rtcp_port_1);
                     }
                     break;
                 }
             }
         }
-        if (!strcmp(method, "OPTIONS")) {
+        if (!strcmp(method, "OPTIONS"))
+        {
             char *p = strrchr(url, ch);
             memcpy(filename, p + 1, strlen(p));
 
@@ -202,16 +229,21 @@ void *doClientThd(void *arg)
                 handleCmd_404(send_buf, cseq);
                 send(client_sock_fd, send_buf, strlen(send_buf), 0);
                 goto out;
-            } else {
+            }
+            else
+            {
                 close(fd);
-                if (handleCmd_OPTIONS(send_buf, cseq)) {
+                if (handleCmd_OPTIONS(send_buf, cseq))
+                {
                     printf("failed to handle options\n");
                     goto out;
                 }
             }
-
-        } else if (!strcmp(method, "DESCRIBE")) {
-            if (findflag == 0) {
+        }
+        else if (!strcmp(method, "DESCRIBE"))
+        {
+            if (findflag == 0)
+            {
                 char *p = strrchr(url, ch);
                 memcpy(filename, p + 1, strlen(p));
 
@@ -230,38 +262,58 @@ void *doClientThd(void *arg)
             char sdp[1024];
             char localIp[100];
             sscanf(url, "rtsp://%[^:]:", localIp);
-            generateSDP(path_tmp, localIp, sdp, sizeof(sdp));
-            if (handleCmd_DESCRIBE(send_buf, cseq, url, sdp)) {
+            int ret = generateSDP(path_tmp, localIp, sdp, sizeof(sdp));
+            if (ret < 0)
+            { // mp4文件有问题，或者视频不是H264/H265,音频不是AAC
+                handleCmd_500(send_buf, cseq);
+                send(client_sock_fd, send_buf, strlen(send_buf), 0);
+                goto out;
+            }
+            if (handleCmd_DESCRIBE(send_buf, cseq, url, sdp))
+            {
                 printf("failed to handle describe\n");
                 goto out;
             }
-        } else if (!strcmp(method, "SETUP") && ture_of_rtp_tcp == 0) // RTP_OVER_UDP
+        }
+        else if (!strcmp(method, "SETUP") && ture_of_rtp_tcp == 0) // RTP_OVER_UDP
         {
             sscanf(url, "rtsp://%[^:]:", local_ip);
-            if (memcmp(track, "track0", 6) == 0) {
+            if (memcmp(track, "track0", 6) == 0)
+            {
                 create_rtp_sockets(&server_udp_socket_rtp_fd, &server_udp_socket_rtcp_fd, &server_rtp_port, &server_rtp_port);
                 handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port, server_rtp_port);
-            } else {
+            }
+            else
+            {
                 create_rtp_sockets(&server_udp_socket_rtp_1_fd, &server_udp_socket_rtcp_1_fd, &server_rtp_port_1, &server_rtp_port_1);
                 handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port_1, server_rtp_port_1);
             }
-        } else if (!strcmp(method, "SETUP") && ture_of_rtp_tcp == 1) // RTP_OVER_TCP
+        }
+        else if (!strcmp(method, "SETUP") && ture_of_rtp_tcp == 1) // RTP_OVER_TCP
         {
             sscanf(url, "rtsp://%[^:]:", local_ip);
-            if (memcmp(track, "track0", 6) == 0) {
+            if (memcmp(track, "track0", 6) == 0)
+            {
                 handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_0);
-            } else {
+            }
+            else
+            {
                 handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_2);
             }
-        } else if (!strcmp(method, "PLAY")) {
+        }
+        else if (!strcmp(method, "PLAY"))
+        {
             memset(url_play, 0, sizeof(url_play));
             memset(track, 0, sizeof(track));
             strcpy(url_play, url);
-            if (handleCmd_PLAY(send_buf, cseq, url_play)) {
+            if (handleCmd_PLAY(send_buf, cseq, url_play))
+            {
                 printf("failed to handle play\n");
                 goto out;
             }
-        } else {
+        }
+        else
+        {
             goto out;
         }
 
@@ -270,7 +322,8 @@ void *doClientThd(void *arg)
 
         send(client_sock_fd, send_buf, strlen(send_buf), 0);
 
-        if (!strcmp(method, "PLAY")) {
+        if (!strcmp(method, "PLAY"))
+        {
             struct timeval time_pre, time_now;
             gettimeofday(&time_pre, NULL);
 
@@ -313,19 +366,22 @@ int main(int argc, char *argv[])
     signal(SIGFPE, SIG_IGN);
 
     server_sock_fd = createTcpSocket();
-    if (server_sock_fd < 0) {
+    if (server_sock_fd < 0)
+    {
         printf("failed to create tcp socket\n");
         return -1;
     }
 
     ret = bindSocketAddr(server_sock_fd, SERVER_IP, SERVER_PORT);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         printf("failed to bind addr\n");
         return -1;
     }
 
     ret = listen(server_sock_fd, 100);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         printf("failed to listen\n");
         return -1;
     }
@@ -333,14 +389,16 @@ int main(int argc, char *argv[])
     moduleInit();
 
     printf("rtsp://%s:%d/filename\n", SERVER_IP, SERVER_PORT);
-    while (1) {
+    while (1)
+    {
         int client_sock_fd;
         char client_ip[40];
         int client_port;
         pthread_t tid;
 
         client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port);
-        if (client_sock_fd < 0) {
+        if (client_sock_fd < 0)
+        {
             printf("failed to accept client\n");
             return -1;
         }
@@ -352,7 +410,8 @@ int main(int argc, char *argv[])
         arg->client_sock_fd = client_sock_fd;
 
         ret = pthread_create(&tid, NULL, doClientThd, (void *)arg);
-        if (ret < 0) {
+        if (ret < 0)
+        {
             perror("doClientThd pthread_create()");
         }
         pthread_detach(tid);

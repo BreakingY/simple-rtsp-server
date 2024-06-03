@@ -1,4 +1,4 @@
-#include "h264_rtp.h"
+#include "h265_rtp.h"
 
 static uint32_t getTimestamp()
 {
@@ -11,26 +11,28 @@ static uint32_t getTimestamp()
     uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * 90; // 90: clockRate/1000;
     return ts;
 }
-int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, uint8_t *frame, uint32_t frame_size, int fps, int sig_0, char *client_ip, int client_rtp_port)
+int rtpSendH265Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, uint8_t *frame, uint32_t frame_size, int fps, int sig_0, char *client_ip, int client_rtp_port)
 {
-    uint8_t nalu_type; // nalu第一个字节
+    uint8_t nalu_type;
     int send_bytes = 0;
     int ret;
-
-    nalu_type = frame[0];
-    rtp_packet->rtpHeader.marker = 0;
-    memset(rtp_packet->payload, 0, strlen(rtp_packet->payload));
 
     if (frame == NULL)
     {
         return -1;
     }
+
+    nalu_type = (frame[0] & 0x7E) >> 1;
+    rtp_packet->rtpHeader.marker = 0;
+    memset(rtp_packet->payload, 0, strlen(rtp_packet->payload));
+
     rtp_packet->rtpHeader.timestamp = getTimestamp();
     if (tcp_header != NULL)
     {
         tcp_header->magic = '$';
         tcp_header->rtp_len16 = 0;
     }
+
     struct sockaddr_in addr;
     if (client_rtp_port != -1 && client_ip != NULL)
     {
@@ -38,22 +40,14 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
         addr.sin_port = htons(client_rtp_port);
         addr.sin_addr.s_addr = inet_addr(client_ip);
     }
+
     if (frame_size <= PTK_RTP_TCP_MAX) // nalu长度小于最大包场：单一NALU单元模式
     {
-        /*
-         *   0 1 2 3 4 5 6 7 8 9
-         *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         *  |F|NRI|  Type   | a single NAL unit ... |--NALU头部+NAL
-         *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         */
-        /*单一模式m位为1*/
         rtp_packet->rtpHeader.marker = 1;
         if (tcp_header != NULL && sig_0 != -1)
         { // rtp over tcp
             tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)frame_size;
-
             tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
-            // 发送RTP_OVER_TCP头部
             tcp_header->channel = sig_0;
             ret = send(sd, tcp_header, sizeof(struct rtp_tcp_header), 0);
             if (ret <= 0)
@@ -92,59 +86,33 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
         rtp_packet->rtpHeader.seq++;
         send_bytes += ret;
     }
-    else // nalu长度小于最大包场：分片模式
+    else // nalu长度大于最大包长：分片模式
     {
-        /*
-         *  0                   1                   2
-         *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3
-         * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         * | FU indicator  |   FU header   |   FU payload   ...  |
-         * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         */
-
-        /*
-         *     FU Indicator
-         *    0 1 2 3 4 5 6 7
-         *   +-+-+-+-+-+-+-+-+
-         *   |F|NRI|  Type   |
-         *   +---------------+
-         */
-
-        /*
-         *      FU Header
-         *    0 1 2 3 4 5 6 7
-         *   +-+-+-+-+-+-+-+-+
-         *   |S|E|R|  Type   |
-         *   +---------------+
-         */
-
         int pktNum = frame_size / PTK_RTP_TCP_MAX;        // 有几个完整的包
         int remainPktSize = frame_size % PTK_RTP_TCP_MAX; // 剩余不完整包的大小
-        int i, pos = 1;
+        int i, pos = 2;
 
-        /* 发送完整的包 */
         for (i = 0; i < pktNum; i++)
         {
             memset(rtp_packet->payload, 0, strlen(rtp_packet->payload));
             rtp_packet->rtpHeader.marker = 0;
-            rtp_packet->payload[0] = (nalu_type & 0xE0) | 28; // F，NRI保持不变，Type设为28(|28)
-            // rtp_packet->payload[0] = (nalu_type & 0x60) | 28;
-            rtp_packet->payload[1] = nalu_type & 0x1F; // S E R置0，type与NALU的type相同
+            rtp_packet->payload[0] = (frame[0] & 0x81) | (49 << 1);
+            rtp_packet->payload[1] = frame[1];
+            rtp_packet->payload[2] = nalu_type;
 
             if (i == 0) // 第一包数据
             {
-
-                rtp_packet->payload[1] |= 0x80; // start
+                rtp_packet->payload[2] |= 0x80; // start
             }
             else if (remainPktSize == 0 && i == pktNum - 1) // 最后一包数据
             {
-                rtp_packet->payload[1] |= 0x40; // end
+                rtp_packet->payload[2] |= 0x40; // end
                 rtp_packet->rtpHeader.marker = 1;
             }
 
             if (tcp_header != NULL && sig_0 != -1)
             {
-                tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)PTK_RTP_TCP_MAX + 2; // 多两个字节的FUin和FUheader
+                tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)PTK_RTP_TCP_MAX + 3; // 多三个字节的FU indicator、FU header和FU payload
                 tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
                 tcp_header->channel = sig_0;
                 ret = send(sd, tcp_header, sizeof(struct rtp_tcp_header), 0);
@@ -155,19 +123,18 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
                 tcp_header->rtp_len16 = ntohs(tcp_header->rtp_len16);
             }
 
-            memcpy(rtp_packet->payload + 2, frame + pos, PTK_RTP_TCP_MAX);
+            memcpy(rtp_packet->payload + 3, frame + pos, PTK_RTP_TCP_MAX);
             rtp_packet->rtpHeader.seq = htons(rtp_packet->rtpHeader.seq);
             rtp_packet->rtpHeader.timestamp = htonl(rtp_packet->rtpHeader.timestamp);
             rtp_packet->rtpHeader.ssrc = htonl(rtp_packet->rtpHeader.ssrc);
 
-            // 发送RTP数据包
             if (tcp_header != NULL && sig_0 != -1)
             {
-                ret = send(sd, rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, 0);
+                ret = send(sd, rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 3, 0);
             }
             else if (client_rtp_port != -1 && client_ip != NULL)
             {
-                ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, 0, (struct sockaddr *)&addr, sizeof(addr));
+                ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 3, 0, (struct sockaddr *)&addr, sizeof(addr));
             }
             else
             {
@@ -178,7 +145,6 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
             {
                 return -1;
             }
-            // 还原字节序
 
             rtp_packet->rtpHeader.seq = ntohs(rtp_packet->rtpHeader.seq);
             rtp_packet->rtpHeader.timestamp = ntohl(rtp_packet->rtpHeader.timestamp);
@@ -189,20 +155,19 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
             pos += PTK_RTP_TCP_MAX;
         }
 
-        /* 发送剩余的数据 */
         if (remainPktSize > 0)
         {
             memset(rtp_packet->payload, 0, strlen(rtp_packet->payload));
-            rtp_packet->payload[0] = (nalu_type & 0xE0) | 28;
-            rtp_packet->payload[1] = nalu_type & 0x1F;
-            rtp_packet->payload[1] |= 0x40; // end
+            rtp_packet->payload[0] = (frame[0] & 0x81) | (49 << 1);
+            rtp_packet->payload[1] = frame[1];
+            rtp_packet->payload[2] = nalu_type;
+            rtp_packet->payload[2] |= 0x40; // end
             rtp_packet->rtpHeader.marker = 1;
 
             if (tcp_header != NULL && sig_0 != -1)
             {
-                tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)remainPktSize + 2; // 多两个字节的FUin和FUheader
+                tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)remainPktSize + 3;
                 tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
-                // 发送RTP_OVER_TCP头部
                 tcp_header->channel = sig_0;
                 ret = send(sd, tcp_header, sizeof(struct rtp_tcp_header), 0);
                 if (ret <= 0)
@@ -214,15 +179,15 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
             rtp_packet->rtpHeader.seq = htons(rtp_packet->rtpHeader.seq);
             rtp_packet->rtpHeader.timestamp = htonl(rtp_packet->rtpHeader.timestamp);
             rtp_packet->rtpHeader.ssrc = htonl(rtp_packet->rtpHeader.ssrc);
-            memcpy(rtp_packet->payload + 2, frame + pos, remainPktSize);
+            memcpy(rtp_packet->payload + 3, frame + pos, remainPktSize);
 
             if (tcp_header != NULL && sig_0 != -1)
             {
-                ret = send(sd, rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, 0);
+                ret = send(sd, rtp_packet, RTP_HEADER_SIZE + remainPktSize + 3, 0);
             }
             else if (client_rtp_port != -1 && client_ip != NULL)
             {
-                ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, 0, (struct sockaddr *)&addr, sizeof(addr));
+                ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 3, 0, (struct sockaddr *)&addr, sizeof(addr));
             }
             else
             {
@@ -234,8 +199,6 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
                 return -1;
             }
 
-            // 还原字节序
-
             rtp_packet->rtpHeader.seq = ntohs(rtp_packet->rtpHeader.seq);
             rtp_packet->rtpHeader.timestamp = ntohl(rtp_packet->rtpHeader.timestamp);
             rtp_packet->rtpHeader.ssrc = ntohl(rtp_packet->rtpHeader.ssrc);
@@ -243,7 +206,6 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
             rtp_packet->rtpHeader.seq++;
             send_bytes += ret;
         }
-        // 所有分包的时间戳都是一样的，时间戳的原则就是，发送一个完整的NALU时间戳才更改，但是不管什么包，序列号持续+1
     }
     return send_bytes;
 }
