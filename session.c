@@ -63,6 +63,7 @@ enum VIDEO_e
 enum AUDIO_e
 {
     AUDIO_AAC = 1,
+    AUDIO_PCMA,
     AUDIO_NONE,
 };
 struct MediaPacket_st
@@ -548,6 +549,10 @@ void *epollLoop(void *arg)
                         {
                             ret = rtpSendAACFrame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, clientinfo->sig_2, NULL, -1);
                         }
+                        else if (clientinfo->mp4info->audio_type == AUDIO_PCMA)
+                        {
+                            ret = rtpSendPCMAFrame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, clientinfo->sig_2, NULL, -1);
+                        }
                     }
                 }
                 else
@@ -571,6 +576,10 @@ void *epollLoop(void *arg)
                         if (clientinfo->mp4info->audio_type == AUDIO_AAC)
                         {
                             ret = rtpSendAACFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
+                        }
+                        else if (clientinfo->mp4info->audio_type == AUDIO_PCMA)
+                        {
+                            ret = rtpSendPCMAFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
                         }
                     }
                     // 通过tcp socket判断对端是不是关闭了，udp判断不出来
@@ -997,6 +1006,10 @@ int add1Mp4Info(int pos, char *path_filename, int client_sock_fd, int sig_0, int
         {
             mp4->audio_type = AUDIO_AAC;
         }
+        else if(codecpar->codec_id == AV_CODEC_ID_PCM_ALAW)
+        {
+            mp4->audio_type = AUDIO_PCMA;
+        }
     }
     printf("add1Mp4Info:%s client_sock_fd:%d file fps:%d\n", mp4->filename, client_sock_fd, mp4->fps);
     pthread_mutex_init(&mp4->mut, NULL);
@@ -1046,7 +1059,7 @@ int add1Mp4Info(int pos, char *path_filename, int client_sock_fd, int sig_0, int
     rtpHeaderInit(mp4info_arr[pos]->clientinfo[0].rtp_packet, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H26X, 0, 0, 0, 0x88923423);
     // audio
     mp4info_arr[pos]->clientinfo[0].rtp_packet_1 = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
-    rtpHeaderInit(mp4info_arr[pos]->clientinfo[0].rtp_packet_1, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_AAC, 0, 0, 0, 0x88923423);
+    rtpHeaderInit(mp4info_arr[pos]->clientinfo[0].rtp_packet_1, 0, 0, 0, RTP_VESION, mp4info_arr[pos]->audio_type == AUDIO_AAC ? RTP_PAYLOAD_TYPE_AAC : RTP_PAYLOAD_TYPE_PCMA, 0, 0, 0, 0x88923423);
 
     mp4info_arr[pos]->clientinfo[0].tcp_header = malloc(sizeof(struct rtp_tcp_header));
 
@@ -1198,7 +1211,7 @@ int addClient(char *path_filename, int client_sock_fd, int sig_0, int sig_2, int
             rtpHeaderInit(mp4info_arr[pos]->clientinfo[posofclient].rtp_packet, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H26X, 0, 0, 0, 0x88923423);
             // audio
             mp4info_arr[pos]->clientinfo[posofclient].rtp_packet_1 = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
-            rtpHeaderInit(mp4info_arr[pos]->clientinfo[posofclient].rtp_packet_1, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_AAC, 0, 0, 0, 0x88923423);
+            rtpHeaderInit(mp4info_arr[pos]->clientinfo[posofclient].rtp_packet_1, 0, 0, 0, RTP_VESION, mp4info_arr[pos]->audio_type == AUDIO_AAC ? RTP_PAYLOAD_TYPE_AAC : RTP_PAYLOAD_TYPE_PCMA, 0, 0, 0, 0x88923423);
 
             mp4info_arr[pos]->clientinfo[posofclient].tcp_header = malloc(sizeof(struct rtp_tcp_header));
 

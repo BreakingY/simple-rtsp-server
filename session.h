@@ -3,6 +3,8 @@
 #include "aac_rtp.h"
 #include "common.h"
 #include "h264_rtp.h"
+#include "h265_rtp.h"
+#include "pcma_rtp.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>

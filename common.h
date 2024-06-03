@@ -7,6 +7,7 @@
 
 #define RTP_PAYLOAD_TYPE_H26X 96 // 媒体类型-视频
 #define RTP_PAYLOAD_TYPE_AAC 97  // 媒体类型-音频
+#define RTP_PAYLOAD_TYPE_PCMA 8  // 媒体类型-音频
 
 #define RTP_HEADER_SIZE 12 // 头部大小
 
@@ -91,13 +92,19 @@ enum VIDEOTYPE
     H264 = 1,
     H265,
 };
+enum AUDIOTYPE
+{
+    AAC = 1,
+    PCMA,
+};
 typedef struct
 {
     int has_audio;
     int has_video;
     int is_video_h26x;
-    enum VIDEOTYPE type;
-    int is_audio_aac;
+    enum VIDEOTYPE video_type;
+    enum AUDIOTYPE audio_type;
+    int is_audio_aac_pcma;
     int audio_sample_rate;
     int audio_channels;
     uint8_t *sps;

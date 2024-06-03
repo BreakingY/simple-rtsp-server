@@ -199,7 +199,7 @@ int check_media_info(const char *filename, MediaInfo *info)
     info->has_audio = 0;
     info->has_video = 0;
     info->is_video_h26x = 0;
-    info->is_audio_aac = 0;
+    info->is_audio_aac_pcma = 0;
     info->audio_sample_rate = 0;
     info->audio_channels = 0;
     info->sps = NULL;
@@ -219,19 +219,23 @@ int check_media_info(const char *filename, MediaInfo *info)
             {
                 info->is_video_h26x = 1;
                 if (codecpar->codec_id == AV_CODEC_ID_H264)
-                    info->type = H264;
+                    info->video_type = H264;
                 else
-                    info->type = H265;
+                    info->video_type = H265;
             }
         }
         else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
         {
             info->has_audio = 1;
-            if (codecpar->codec_id == AV_CODEC_ID_AAC)
+            if (codecpar->codec_id == AV_CODEC_ID_AAC || codecpar->codec_id == AV_CODEC_ID_PCM_ALAW)
             {
-                info->is_audio_aac = 1;
+                info->is_audio_aac_pcma = 1;
                 info->audio_sample_rate = codecpar->sample_rate;
                 info->audio_channels = codecpar->channels;
+                if(codecpar->codec_id == AV_CODEC_ID_AAC)
+                    info->audio_type = AAC;
+                else
+                    info->audio_type = PCMA;
             }
         }
     }
@@ -257,16 +261,19 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
     if (check_media_info(file, &info) != 0)
     {
         printf("server error\n");
+        free_media_info(&info);
         return -1;
     }
     if (info.has_video && !info.is_video_h26x)
     {
-        printf("only support h264\n");
+        printf("only support h264 h265\n");
+        free_media_info(&info);
         return -1;
     }
-    if (info.has_audio && !info.is_audio_aac)
+    if (info.has_audio && !info.is_audio_aac_pcma)
     {
-        printf("only support aac\n");
+        printf("only support aac pcma\n");
+        free_media_info(&info);
         return -1;
     }
     sprintf(buffer, "v=0\r\n"
@@ -282,15 +289,25 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
                                          //"a=fmtp:%d profile-level-id=42A01E; packetization-mode=1; sprop-parameter-sets=Z0IACpZTBYmI,aMljiA==\r\n"
                                          "a=fmtp:%d packetization-mode=1\r\n"
                                          "a=control:track0\r\n",
-                RTP_PAYLOAD_TYPE_H26X, RTP_PAYLOAD_TYPE_H26X, info.type == H264 ? "H264" : "H265", RTP_PAYLOAD_TYPE_H26X);
+                RTP_PAYLOAD_TYPE_H26X, RTP_PAYLOAD_TYPE_H26X, info.video_type == H264 ? "H264" : "H265", RTP_PAYLOAD_TYPE_H26X);
     }
     if (info.has_audio)
     {
-        sprintf(buffer + strlen(buffer), "m=audio 0 RTP/AVP %d\r\n"
-                                         "a=rtpmap:%d MPEG4-GENERIC/%u/%u\r\n"
-                                         "a=fmtp:%d profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3\r\n"
-                                         "a=control:track1\r\n",
-                RTP_PAYLOAD_TYPE_AAC, RTP_PAYLOAD_TYPE_AAC, info.audio_sample_rate, info.audio_channels, RTP_PAYLOAD_TYPE_AAC);
+        if (info.audio_type == AAC)
+        {
+            sprintf(buffer + strlen(buffer), "m=audio 0 RTP/AVP %d\r\n"
+                                             "a=rtpmap:%d MPEG4-GENERIC/%u/%u\r\n"
+                                             "a=fmtp:%d profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3\r\n"
+                                             "a=control:track1\r\n",
+                    RTP_PAYLOAD_TYPE_AAC, RTP_PAYLOAD_TYPE_AAC, info.audio_sample_rate, info.audio_channels, RTP_PAYLOAD_TYPE_AAC);
+        }
+        else
+        {
+            sprintf(buffer + strlen(buffer), "m=audio 0 RTP/AVP %d\r\n"
+                                             "a=rtpmap:%d PCMA/%u/%u\r\n"
+                                             "a=control:track1\r\n",
+                    RTP_PAYLOAD_TYPE_PCMA, RTP_PAYLOAD_TYPE_PCMA, info.audio_sample_rate, info.audio_channels);
+        }
     }
     free_media_info(&info);
     return 0;
