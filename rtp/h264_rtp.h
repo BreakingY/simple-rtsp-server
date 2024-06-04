@@ -1,10 +1,6 @@
 #ifndef _H264RTP_H_
 #define _H264RTP_H_
 #include "common.h"
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/log.h>
-#include <libavutil/time.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdio.h>
