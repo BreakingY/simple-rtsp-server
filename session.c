@@ -76,7 +76,7 @@ struct clientinfo_st
     void *arg;                         // 指向自己结构体指针
     void (*send_call_back)(void *arg); // 回调函数,目前只针对数据发送回调函数，如果需要关注EPOLLIN事件，可以再定义一个回调函数接口，负责接收客户端发送过来的数据
     int events;                        // 对应的监听事件，EPOLLIN和EPLLOUT，目前只关心EPOLLOUT事件
-    struct mp4info_st *mp4info;        // 指向上层结构体(视频回放任务)
+    struct session_st *session;        // 指向上层结构体
 
     struct RtpPacket *rtp_packet;   // video 每一个客户端对应一个rtp 和tcp数据包，否则不同客户端共用数据包会导致序列号不连续
     struct RtpPacket *rtp_packet_1; // audio
@@ -99,21 +99,21 @@ struct clientinfo_st
     int pos_last_packet_1;  // 环形缓冲区可用的尾部位置
 };
 /*视频回放任务结构体*/
-struct mp4info_st
+struct session_st
 {
     void *media;
     char *filename;
     pthread_mutex_t mut;
-    struct clientinfo_st clientinfo[CLIENTMAX]; // 请求回放当前视频文件的rtsp客户端
+    struct clientinfo_st clientinfo[CLIENTMAX]; // session的客户端连接队列
     int count;
     int pos;
 };
 
-struct mp4info_st *mp4info_arr[FILEMAX]; // 视频回放任务数组，动态添加删除
-pthread_mutex_t mut_mp4 = PTHREAD_MUTEX_INITIALIZER;
+struct session_st *session_arr[FILEMAX]; // session数组，动态添加删除
+pthread_mutex_t mut_session = PTHREAD_MUTEX_INITIALIZER;
 /*
- * 注意加锁的层级关系为lock  mut_mp4(读写mp4info_arr) --> lock mp4info_arr[i].mutx(读写mp4info_st) --> lock mp4info_arr[i].clientinfo_st[j].mut_list(读写clientinfo_st的环形缓冲区队列)
- * --> unlock mut_mp4 --> unlock mp4info_st.mutx --> unlock clientinfo_st.mut_list
+ * 注意加锁的层级关系为lock  mut_session(读写session_arr) --> lock session_arr[i].mutx(读写session_st) --> lock session_arr[i].clientinfo_st[j].mut_list(读写clientinfo_st的环形缓冲区队列)
+ * --> unlock mut_session --> unlock session_st.mutx --> unlock clientinfo_st.mut_list
  * 不是所有操作都需要加上面的三个锁，但是加多个锁的时候要遵循上面的加锁顺序，防止死锁
  */
 
@@ -267,7 +267,7 @@ int initClient(struct clientinfo_st *clientinfo)
     clientinfo->arg = NULL;
     clientinfo->send_call_back = NULL;
     clientinfo->events = -1;
-    clientinfo->mp4info = NULL;
+    clientinfo->session = NULL;
 
     clientinfo->rtp_packet = NULL;
     clientinfo->rtp_packet_1 = NULL;
@@ -332,7 +332,7 @@ int clearClient(struct clientinfo_st *clientinfo)
     clientinfo->arg = NULL;
     clientinfo->send_call_back = NULL;
     clientinfo->events = -1;
-    // clientinfo->mp4info=NULL;
+    // clientinfo->session=NULL;
 
     if (clientinfo->rtp_packet != NULL)
     {
@@ -406,7 +406,7 @@ void *epollLoop(void *arg)
             if ((events[i].events & EPOLLOUT) && (clientinfo->events & EPOLLOUT))
             {
                 // 从环形队列中获取数据并发送
-                pthread_mutex_lock(&clientinfo->mp4info->mut); // 正在读取mp4info里面的clientinfo，需要加锁
+                pthread_mutex_lock(&clientinfo->session->mut); // 正在读取session里面的clientinfo，需要加锁
                 pthread_mutex_lock(&clientinfo->mut_list);
                 struct MediaPacket_st node;
                 node.size = 0;
@@ -461,17 +461,17 @@ void *epollLoop(void *arg)
                 if (node.size == 0)
                 { // 没有数据要发送
                     pthread_mutex_unlock(&clientinfo->mut_list);
-                    pthread_mutex_unlock(&clientinfo->mp4info->mut);
+                    pthread_mutex_unlock(&clientinfo->session->mut);
                     continue;
                 }
                 pthread_mutex_unlock(&clientinfo->mut_list);
-                pthread_mutex_unlock(&clientinfo->mp4info->mut);
-                enum VIDEO_e video_type = getVideoType(clientinfo->mp4info->media);
-                struct audioinfo_st audioinfo = getAudioInfo(clientinfo->mp4info->media);
+                pthread_mutex_unlock(&clientinfo->session->mut);
+                enum VIDEO_e video_type = getVideoType(clientinfo->session->media);
+                struct audioinfo_st audioinfo = getAudioInfo(clientinfo->session->media);
                 int sample_rate = audioinfo.sample_rate;
                 int channels = audioinfo.channels;
                 int profile = audioinfo.profile;
-                enum AUDIO_e audio_type = getAudioType(clientinfo->mp4info->media);
+                enum AUDIO_e audio_type = getAudioType(clientinfo->session->media);
                 int ret;
                 if (fd == clientinfo->sd)
                 { // rtp over tcp
@@ -540,20 +540,20 @@ void *epollLoop(void *arg)
                         free(epoll_data);
                     }
                     printf("client:%d offline\n", clientinfo->sd);
-                    struct mp4info_st *mp4info = clientinfo->mp4info;
+                    struct session_st *session = clientinfo->session;
                     int count = 0;
-                    pthread_mutex_lock(&clientinfo->mp4info->mut);
+                    pthread_mutex_lock(&clientinfo->session->mut);
                     clearClient(clientinfo);
-                    mp4info->count--;
-                    count = mp4info->count;
-                    pthread_mutex_unlock(&clientinfo->mp4info->mut);
+                    session->count--;
+                    count = session->count;
+                    pthread_mutex_unlock(&clientinfo->session->mut);
                     /*更改客户连接总数*/
                     pthread_mutex_lock(&mut_clientcount);
                     sum_client--;
                     printf("sum_client:%d\n", sum_client);
                     pthread_mutex_unlock(&mut_clientcount);
                     if(count == 0){
-                        del1Mp4Info(clientinfo->mp4info->pos);
+                        delSession(clientinfo->session->pos);
                     }
                 }
             }
@@ -600,11 +600,11 @@ void sendData(void *arg)
     increaseClientList(AUDIO, clientinfo);
     // 数据包送入环形队列中
     
-    if (nowStreamIsVideo(clientinfo->mp4info->media) && (clientinfo->sig_0 != -1 || clientinfo->client_rtp_port != -1))
+    if (nowStreamIsVideo(clientinfo->session->media) && (clientinfo->sig_0 != -1 || clientinfo->client_rtp_port != -1))
     { // video
         char *ptr = NULL;
         int ptr_len = 0;
-        getVideoNALUWithoutStartCode(clientinfo->mp4info->media, &ptr, &ptr_len);
+        getVideoNALUWithoutStartCode(clientinfo->session->media, &ptr, &ptr_len);
         memcpy(clientinfo->packet_list[clientinfo->pos_last_packet].data, ptr, ptr_len);
         clientinfo->packet_list[clientinfo->pos_last_packet].size = ptr_len;
         clientinfo->packet_list[clientinfo->pos_last_packet].type = VIDEO;
@@ -615,11 +615,11 @@ void sendData(void *arg)
             clientinfo->pos_last_packet = 0;
         }
     }
-    if (nowStreamIsAudio(clientinfo->mp4info->media) && (clientinfo->sig_2 != -1 || clientinfo->client_rtp_port_1 != -1))
+    if (nowStreamIsAudio(clientinfo->session->media) && (clientinfo->sig_2 != -1 || clientinfo->client_rtp_port_1 != -1))
     { // audio
         char *ptr = NULL;
         int ptr_len = 0;
-        getAudioWithoutADTS(clientinfo->mp4info->media, &ptr, &ptr_len);
+        getAudioWithoutADTS(clientinfo->session->media, &ptr, &ptr_len);
         if (clientinfo->client_rtp_port_1 != -1)
         { // udp,音视频用不同的队列
             memcpy(clientinfo->packet_list_1[clientinfo->pos_last_packet_1].data, ptr, ptr_len);
@@ -649,25 +649,25 @@ void sendData(void *arg)
     return;
 }
 void mediaCallBack(void *arg){
-    struct mp4info_st *mp4info = (struct mp4info_st *)arg;
-    if(mp4info == NULL){
+    struct session_st *session = (struct session_st *)arg;
+    if(session == NULL){
         return;
     }
-    pthread_mutex_lock(&mp4info->mut);
-    for (int i = 0; i < mp4info->count; i++)
+    pthread_mutex_lock(&session->mut);
+    for (int i = 0; i < session->count; i++)
     {
-        if (mp4info->clientinfo[i].sd != -1 && mp4info->clientinfo[i].send_call_back != NULL && mp4info->clientinfo[i].playflag == 1)
+        if (session->clientinfo[i].sd != -1 && session->clientinfo[i].send_call_back != NULL && session->clientinfo[i].playflag == 1)
         {
-            mp4info->clientinfo[i].send_call_back(mp4info->clientinfo[i].arg);
+            session->clientinfo[i].send_call_back(session->clientinfo[i].arg);
         }
     }
-    pthread_mutex_unlock(&mp4info->mut);
+    pthread_mutex_unlock(&session->mut);
 }
 int get_free_clientinfo(int pos)
 {
     for (int i = 0; i < CLIENTMAX; i++)
     {
-        if (mp4info_arr[pos]->clientinfo[i].sd == -1)
+        if (session_arr[pos]->clientinfo[i].sd == -1)
         {
 
             return i;
@@ -675,102 +675,102 @@ int get_free_clientinfo(int pos)
     }
     return -1;
 }
-/*创建一个mp4文件回放任务并添加一个客户端*/
-int add1Mp4Info(int pos, char *path_filename, int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, int server_rtp_fd, int server_rtcp_fd, int server_rtp_fd_1, int server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1)
+/*创建一个session并添加一个客户端*/
+int addSession(int pos, char *path_filename, int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, int server_rtp_fd, int server_rtcp_fd, int server_rtp_fd_1, int server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1)
 {
-    pthread_mutex_lock(&mut_mp4);
-    struct mp4info_st *mp4;
-    mp4 = malloc(sizeof(struct mp4info_st));
-    mp4->media = creatMedia(path_filename, mediaCallBack,mp4);
+    pthread_mutex_lock(&mut_session);
+    struct session_st *session;
+    session = malloc(sizeof(struct session_st));
+    session->media = creatMedia(path_filename, mediaCallBack,session);
 
-    mp4->filename = malloc(strlen(path_filename) + 1);
-    memset(mp4->filename, 0, strlen(path_filename) + 1);
-    memcpy(mp4->filename, path_filename, strlen(path_filename));
+    session->filename = malloc(strlen(path_filename) + 1);
+    memset(session->filename, 0, strlen(path_filename) + 1);
+    memcpy(session->filename, path_filename, strlen(path_filename));
 
-    printf("add1Mp4Info:%s client_sock_fd:%d\n", mp4->filename, client_sock_fd);
-    pthread_mutex_init(&mp4->mut, NULL);
-    mp4->count = 0;
+    printf("addSession:%s client_sock_fd:%d\n", session->filename, client_sock_fd);
+    pthread_mutex_init(&session->mut, NULL);
+    session->count = 0;
 
-    mp4info_arr[pos] = mp4;
-    mp4->pos = pos;
+    session_arr[pos] = session;
+    session->pos = pos;
     for (int j = 0; j < CLIENTMAX; j++)
     {
-        initClient(&mp4info_arr[pos]->clientinfo[j]);
-        mp4info_arr[pos]->clientinfo[j].mp4info = mp4info_arr[pos];
+        initClient(&session_arr[pos]->clientinfo[j]);
+        session_arr[pos]->clientinfo[j].session = session_arr[pos];
     }
-    pthread_mutex_lock(&mp4info_arr[pos]->mut);
-    mp4info_arr[pos]->clientinfo[0].sd = client_sock_fd;
-    mp4info_arr[pos]->count++;
+    pthread_mutex_lock(&session_arr[pos]->mut);
+    session_arr[pos]->clientinfo[0].sd = client_sock_fd;
+    session_arr[pos]->count++;
     if (ture_of_tcp == 1)
     {
-        mp4info_arr[pos]->clientinfo[0].transport = RTP_OVER_TCP;
-        mp4info_arr[pos]->clientinfo[0].sig_0 = sig_0;
-        mp4info_arr[pos]->clientinfo[0].sig_2 = sig_2;
+        session_arr[pos]->clientinfo[0].transport = RTP_OVER_TCP;
+        session_arr[pos]->clientinfo[0].sig_0 = sig_0;
+        session_arr[pos]->clientinfo[0].sig_2 = sig_2;
     }
     else
     {
-        mp4info_arr[pos]->clientinfo[0].transport = RTP_OVER_UDP;
-        memset(mp4info_arr[pos]->clientinfo[0].client_ip, 0, sizeof(mp4info_arr[pos]->clientinfo[0].client_ip));
-        memcpy(mp4info_arr[pos]->clientinfo[0].client_ip, client_ip, strlen(client_ip));
-        mp4info_arr[pos]->clientinfo[0].udp_sd_rtp = server_rtp_fd;
-        mp4info_arr[pos]->clientinfo[0].udp_sd_rtcp = server_rtcp_fd;
-        mp4info_arr[pos]->clientinfo[0].udp_sd_rtp_1 = server_rtp_fd_1;
-        mp4info_arr[pos]->clientinfo[0].udp_sd_rtcp_1 = server_rtcp_fd_1;
-        mp4info_arr[pos]->clientinfo[0].client_rtp_port = client_rtp_port;
-        mp4info_arr[pos]->clientinfo[0].client_rtp_port_1 = client_rtp_port_1;
+        session_arr[pos]->clientinfo[0].transport = RTP_OVER_UDP;
+        memset(session_arr[pos]->clientinfo[0].client_ip, 0, sizeof(session_arr[pos]->clientinfo[0].client_ip));
+        memcpy(session_arr[pos]->clientinfo[0].client_ip, client_ip, strlen(client_ip));
+        session_arr[pos]->clientinfo[0].udp_sd_rtp = server_rtp_fd;
+        session_arr[pos]->clientinfo[0].udp_sd_rtcp = server_rtcp_fd;
+        session_arr[pos]->clientinfo[0].udp_sd_rtp_1 = server_rtp_fd_1;
+        session_arr[pos]->clientinfo[0].udp_sd_rtcp_1 = server_rtcp_fd_1;
+        session_arr[pos]->clientinfo[0].client_rtp_port = client_rtp_port;
+        session_arr[pos]->clientinfo[0].client_rtp_port_1 = client_rtp_port_1;
     }
     // video
-    mp4info_arr[pos]->clientinfo[0].rtp_packet = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
-    rtpHeaderInit(mp4info_arr[pos]->clientinfo[0].rtp_packet, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H26X, 0, 0, 0, 0x88923423);
+    session_arr[pos]->clientinfo[0].rtp_packet = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
+    rtpHeaderInit(session_arr[pos]->clientinfo[0].rtp_packet, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H26X, 0, 0, 0, 0x88923423);
     // audio
-    mp4info_arr[pos]->clientinfo[0].rtp_packet_1 = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
-    rtpHeaderInit(mp4info_arr[pos]->clientinfo[0].rtp_packet_1, 0, 0, 0, RTP_VESION, getAudioType(mp4info_arr[pos]->media) == AUDIO_AAC ? RTP_PAYLOAD_TYPE_AAC : RTP_PAYLOAD_TYPE_PCMA, 0, 0, 0, 0x88923423);
+    session_arr[pos]->clientinfo[0].rtp_packet_1 = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
+    rtpHeaderInit(session_arr[pos]->clientinfo[0].rtp_packet_1, 0, 0, 0, RTP_VESION, getAudioType(session_arr[pos]->media) == AUDIO_AAC ? RTP_PAYLOAD_TYPE_AAC : RTP_PAYLOAD_TYPE_PCMA, 0, 0, 0, 0x88923423);
 
-    mp4info_arr[pos]->clientinfo[0].tcp_header = malloc(sizeof(struct rtp_tcp_header));
+    session_arr[pos]->clientinfo[0].tcp_header = malloc(sizeof(struct rtp_tcp_header));
 
-    mp4info_arr[pos]->clientinfo[0].packet_list = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
-    mp4info_arr[pos]->clientinfo[0].packet_list_size = RING_BUFFER_MAX / 4;
-    mp4info_arr[pos]->clientinfo[0].packet_list_1 = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
-    mp4info_arr[pos]->clientinfo[0].packet_list_size_1 = RING_BUFFER_MAX / 4;
+    session_arr[pos]->clientinfo[0].packet_list = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
+    session_arr[pos]->clientinfo[0].packet_list_size = RING_BUFFER_MAX / 4;
+    session_arr[pos]->clientinfo[0].packet_list_1 = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
+    session_arr[pos]->clientinfo[0].packet_list_size_1 = RING_BUFFER_MAX / 4;
 
-    eventAdd(EPOLLOUT, &mp4info_arr[pos]->clientinfo[0], sendData, &mp4info_arr[pos]->clientinfo[0]);
-    mp4info_arr[pos]->clientinfo[0].playflag = 1;
-    pthread_mutex_unlock(&mp4info_arr[pos]->mut);
-    pthread_mutex_unlock(&mut_mp4);
+    eventAdd(EPOLLOUT, &session_arr[pos]->clientinfo[0], sendData, &session_arr[pos]->clientinfo[0]);
+    session_arr[pos]->clientinfo[0].playflag = 1;
+    pthread_mutex_unlock(&session_arr[pos]->mut);
+    pthread_mutex_unlock(&mut_session);
     return 0;
 }
-/*删除mp4回放任务*/
-void del1Mp4Info(int pos)
+/*删除session*/
+void delSession(int pos)
 {
-    destroyMedia(mp4info_arr[pos]->media);// destroyMedia不要加锁
+    destroyMedia(session_arr[pos]->media); // destroyMedia不要加锁
     int client_num = 0;
-    pthread_mutex_lock(&mut_mp4);
-    if (mp4info_arr[pos] == NULL)
+    pthread_mutex_lock(&mut_session);
+    if (session_arr[pos] == NULL)
     {
-        pthread_mutex_unlock(&mut_mp4);
+        pthread_mutex_unlock(&mut_session);
         return;
     }
-    printf("del1Mp4Info:%s\n", mp4info_arr[pos]->filename);
-    pthread_mutex_lock(&mp4info_arr[pos]->mut);
+    printf("delSession:%s\n", session_arr[pos]->filename);
+    pthread_mutex_lock(&session_arr[pos]->mut);
     for (int i = 0; i < CLIENTMAX; i++)
     {
-        if (mp4info_arr[pos]->clientinfo[i].sd > 0)
+        if (session_arr[pos]->clientinfo[i].sd > 0)
         {
             client_num++;
-            eventDel(&mp4info_arr[pos]->clientinfo[i]);
+            eventDel(&session_arr[pos]->clientinfo[i]);
         }
-        clearClient(&mp4info_arr[pos]->clientinfo[i]);
+        clearClient(&session_arr[pos]->clientinfo[i]);
     }
    
-    if(mp4info_arr[pos]->filename){
-        free(mp4info_arr[pos]->filename);
-        mp4info_arr[pos]->filename = NULL;
+    if(session_arr[pos]->filename){
+        free(session_arr[pos]->filename);
+        session_arr[pos]->filename = NULL;
     }
-    pthread_mutex_unlock(&mp4info_arr[pos]->mut);
-    pthread_mutex_destroy(&mp4info_arr[pos]->mut);
-    free(mp4info_arr[pos]);
-    mp4info_arr[pos] = NULL;
-    pthread_mutex_unlock(&mut_mp4);
+    pthread_mutex_unlock(&session_arr[pos]->mut);
+    pthread_mutex_destroy(&session_arr[pos]->mut);
+    free(session_arr[pos]);
+    session_arr[pos] = NULL;
+    pthread_mutex_unlock(&mut_session);
 
     pthread_mutex_lock(&mut_clientcount);
     sum_client -= client_num;
@@ -791,9 +791,9 @@ void moduleDel()
 {
     for (int i = 0; i < FILEMAX; i++)
     {
-        del1Mp4Info(i);
+        delSession(i);
     }
-    pthread_mutex_destroy(&mut_mp4);
+    pthread_mutex_destroy(&mut_session);
     pthread_mutex_destroy(&mut_clientcount);
     run_flag = 0;
     closeEpoll();
@@ -808,79 +808,79 @@ int addClient(char *path_filename, int client_sock_fd, int sig_0, int sig_2, int
     int pos = 0;
     int min_free_pos = FILEMAX;
     int fps;
-    /*查看mp4info中是否已经存在该文件*/
-    pthread_mutex_lock(&mut_mp4);
+    /*查看session是否已经存在*/
+    pthread_mutex_lock(&mut_session);
     for (int i = 0; i < FILEMAX; i++)
     {
-        if (mp4info_arr[i] == NULL)
+        if (session_arr[i] == NULL)
         {
             if (i < min_free_pos)
                 min_free_pos = i;
             continue;
         }
-        if (!strncmp(mp4info_arr[i]->filename, path_filename, strlen(path_filename))) // 客户端请求回放的文件已经在回放任务队列里面
+        if (!strncmp(session_arr[i]->filename, path_filename, strlen(path_filename))) // session存在，把客户端添加到session的客户端队列中
         {
-            pthread_mutex_lock(&mp4info_arr[i]->mut);
+            pthread_mutex_lock(&session_arr[i]->mut);
             istrueflag = 1;
             pos = i;
-            // 把客户端添加到这个视频文件回放任务中的客户端队列中
+
             int posofclient = get_free_clientinfo(pos);
-            if (posofclient < 0) // 超过一个视频文件回放任务所支持的最大客户端个数，一个回访任务最多支持FILEMAX(1024)个客户端
+            if (posofclient < 0) // 超过一个session所支持的最大客户端个数，一个session最多支持FILEMAX(1024)个客户端
             {
                 printf("over client maxnum\n");
-                pthread_mutex_unlock(&mp4info_arr[pos]->mut);
-                pthread_mutex_unlock(&mut_mp4);
+                pthread_mutex_unlock(&session_arr[pos]->mut);
+                pthread_mutex_unlock(&mut_session);
                 return -1;
             }
-            mp4info_arr[pos]->clientinfo[posofclient].sd = client_sock_fd;
+            session_arr[pos]->clientinfo[posofclient].sd = client_sock_fd;
 
             if (ture_of_tcp == 1)
             {
-                mp4info_arr[pos]->clientinfo[posofclient].transport = RTP_OVER_TCP;
-                mp4info_arr[pos]->clientinfo[posofclient].sig_0 = sig_0; // video
-                mp4info_arr[pos]->clientinfo[posofclient].sig_2 = sig_2; // audio
+                session_arr[pos]->clientinfo[posofclient].transport = RTP_OVER_TCP;
+                session_arr[pos]->clientinfo[posofclient].sig_0 = sig_0; // video
+                session_arr[pos]->clientinfo[posofclient].sig_2 = sig_2; // audio
             }
             else
             {
-                mp4info_arr[pos]->clientinfo[posofclient].transport = RTP_OVER_UDP;
-                memset(mp4info_arr[pos]->clientinfo[posofclient].client_ip, 0, sizeof(mp4info_arr[pos]->clientinfo[posofclient].client_ip));
-                memcpy(mp4info_arr[pos]->clientinfo[posofclient].client_ip, client_ip, strlen(client_ip));
+                session_arr[pos]->clientinfo[posofclient].transport = RTP_OVER_UDP;
+                memset(session_arr[pos]->clientinfo[posofclient].client_ip, 0, sizeof(session_arr[pos]->clientinfo[posofclient].client_ip));
+                memcpy(session_arr[pos]->clientinfo[posofclient].client_ip, client_ip, strlen(client_ip));
                 // video
-                mp4info_arr[pos]->clientinfo[posofclient].udp_sd_rtp = server_udp_socket_rtp;
-                mp4info_arr[pos]->clientinfo[posofclient].udp_sd_rtcp = server_udp_socket_rtcp;
-                mp4info_arr[pos]->clientinfo[posofclient].client_rtp_port = client_rtp_port;
+                session_arr[pos]->clientinfo[posofclient].udp_sd_rtp = server_udp_socket_rtp;
+                session_arr[pos]->clientinfo[posofclient].udp_sd_rtcp = server_udp_socket_rtcp;
+                session_arr[pos]->clientinfo[posofclient].client_rtp_port = client_rtp_port;
                 // audio
-                mp4info_arr[pos]->clientinfo[posofclient].udp_sd_rtp_1 = server_udp_socket_rtp_1;
-                mp4info_arr[pos]->clientinfo[posofclient].udp_sd_rtcp_1 = server_udp_socket_rtcp_1;
-                mp4info_arr[pos]->clientinfo[posofclient].client_rtp_port_1 = client_rtp_port_1;
+                session_arr[pos]->clientinfo[posofclient].udp_sd_rtp_1 = server_udp_socket_rtp_1;
+                session_arr[pos]->clientinfo[posofclient].udp_sd_rtcp_1 = server_udp_socket_rtcp_1;
+                session_arr[pos]->clientinfo[posofclient].client_rtp_port_1 = client_rtp_port_1;
             }
 
-            mp4info_arr[pos]->count++;
+            session_arr[pos]->count++;
             // video
-            mp4info_arr[pos]->clientinfo[posofclient].rtp_packet = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
-            rtpHeaderInit(mp4info_arr[pos]->clientinfo[posofclient].rtp_packet, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H26X, 0, 0, 0, 0x88923423);
+            session_arr[pos]->clientinfo[posofclient].rtp_packet = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
+            rtpHeaderInit(session_arr[pos]->clientinfo[posofclient].rtp_packet, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H26X, 0, 0, 0, 0x88923423);
             // audio
-            mp4info_arr[pos]->clientinfo[posofclient].rtp_packet_1 = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
-            rtpHeaderInit(mp4info_arr[pos]->clientinfo[posofclient].rtp_packet_1, 0, 0, 0, RTP_VESION, getAudioType(mp4info_arr[pos]->media) == AUDIO_AAC ? RTP_PAYLOAD_TYPE_AAC : RTP_PAYLOAD_TYPE_PCMA, 0, 0, 0, 0x88923423);
+            session_arr[pos]->clientinfo[posofclient].rtp_packet_1 = (struct RtpPacket *)malloc(VIDEO_DATA_MAX_SIZE);
+            rtpHeaderInit(session_arr[pos]->clientinfo[posofclient].rtp_packet_1, 0, 0, 0, RTP_VESION, getAudioType(session_arr[pos]->media) == AUDIO_AAC ? RTP_PAYLOAD_TYPE_AAC : RTP_PAYLOAD_TYPE_PCMA, 0, 0, 0, 0x88923423);
 
-            mp4info_arr[pos]->clientinfo[posofclient].tcp_header = malloc(sizeof(struct rtp_tcp_header));
+            session_arr[pos]->clientinfo[posofclient].tcp_header = malloc(sizeof(struct rtp_tcp_header));
 
-            mp4info_arr[pos]->clientinfo[posofclient].packet_list = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
-            mp4info_arr[pos]->clientinfo[posofclient].packet_list_size = RING_BUFFER_MAX / 4;
-            mp4info_arr[pos]->clientinfo[posofclient].packet_list_1 = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
-            mp4info_arr[pos]->clientinfo[posofclient].packet_list_size_1 = RING_BUFFER_MAX / 4;
+            session_arr[pos]->clientinfo[posofclient].packet_list = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
+            session_arr[pos]->clientinfo[posofclient].packet_list_size = RING_BUFFER_MAX / 4;
+            session_arr[pos]->clientinfo[posofclient].packet_list_1 = (struct MediaPacket_st *)malloc((RING_BUFFER_MAX / 4) * sizeof(struct MediaPacket_st));
+            session_arr[pos]->clientinfo[posofclient].packet_list_size_1 = RING_BUFFER_MAX / 4;
 
-            eventAdd(EPOLLOUT, &mp4info_arr[pos]->clientinfo[posofclient], sendData, &mp4info_arr[pos]->clientinfo[posofclient]);
-            mp4info_arr[pos]->clientinfo[posofclient].playflag = 1;
-            printf("append client ok fd:%d\n", mp4info_arr[pos]->clientinfo[posofclient].sd);
-            pthread_mutex_unlock(&mp4info_arr[i]->mut);
+            eventAdd(EPOLLOUT, &session_arr[pos]->clientinfo[posofclient], sendData, &session_arr[pos]->clientinfo[posofclient]);
+            session_arr[pos]->clientinfo[posofclient].playflag = 1;
+            printf("append client ok fd:%d\n", session_arr[pos]->clientinfo[posofclient].sd);
+            pthread_mutex_unlock(&session_arr[i]->mut);
             break;
         }
     }
-    pthread_mutex_unlock(&mut_mp4);
+    pthread_mutex_unlock(&mut_session);
     if (istrueflag == 0)
     {
-        int ret = add1Mp4Info(min_free_pos, path_filename, client_sock_fd, sig_0, sig_2, ture_of_tcp, server_udp_socket_rtp, server_udp_socket_rtcp, server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1);
+        int ret = addSession(min_free_pos, path_filename, client_sock_fd, sig_0, sig_2, ture_of_tcp, server_udp_socket_rtp, server_udp_socket_rtcp, server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1);
         if (ret < 0)
         {
 

@@ -202,10 +202,12 @@ int check_media_info(const char *filename, MediaInfo *info)
     info->is_audio_aac_pcma = 0;
     info->audio_sample_rate = 0;
     info->audio_channels = 0;
-    info->sps = NULL;
-    info->pps = NULL;
-    info->sps_size = 0;
-    info->pps_size = 0;
+    // info->vps = NULL;
+    // info->sps = NULL;
+    // info->pps = NULL;
+    // info->vps_size = 0;
+    // info->sps_size = 0;
+    // info->pps_size = 0;
 
     for (unsigned int i = 0; i < format_ctx->nb_streams; i++)
     {
@@ -245,14 +247,18 @@ int check_media_info(const char *filename, MediaInfo *info)
 }
 void free_media_info(MediaInfo *info)
 {
-    if (info->sps)
-    {
-        free(info->sps);
-    }
-    if (info->pps)
-    {
-        free(info->pps);
-    }
+    // if (info->vps)
+    // {
+    //     free(info->vps);
+    // }
+    // if (info->sps)
+    // {
+    //     free(info->sps);
+    // }
+    // if (info->pps)
+    // {
+    //     free(info->pps);
+    // }
 }
 int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
 {

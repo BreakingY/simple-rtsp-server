@@ -213,7 +213,6 @@ void *creatMedia(char *path_filename,void *call_back, void *arg){
 
     mp4->context = NULL;
     mp4->fps = 0;
-    mp4->stat = ALIVE;
     av_init_packet(&mp4->av_pkt);
     mp4->av_pkt.data = NULL;
     mp4->av_pkt.size = 0;
@@ -355,14 +354,6 @@ int getAudioWithoutADTS(void *context, char **ptr, int *ptr_len)
     }
     *ptr = mp4->buffer_audio;
     *ptr_len = mp4->buffer_audio_size;
-    return 0;
-}
-static int finishMedia(void *context){
-    struct mediainfo_st *mp4 = (struct mediainfo_st *)context;
-    if(mp4 == NULL){
-        return -1;
-    }
-    mp4->stat = ISOVER;
     return 0;
 }
 void destroyMedia(void *context){

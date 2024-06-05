@@ -107,10 +107,12 @@ typedef struct
     int is_audio_aac_pcma;
     int audio_sample_rate;
     int audio_channels;
-    uint8_t *sps;
-    int sps_size;
-    uint8_t *pps;
-    int pps_size;
+    // uint8_t *vps;
+    // int vps_size;
+    // uint8_t *sps;
+    // int sps_size;
+    // uint8_t *pps;
+    // int pps_size;
 } MediaInfo;
 int createTcpSocket();
 int createUdpSocket();

@@ -26,13 +26,6 @@ enum AUDIO_e
     AUDIO_PCMA,
     AUDIO_NONE,
 };
-/*记录文件状态*/
-enum File_e
-{
-    ALIVE = 1,
-    ISOVER,
-
-};
 /*buf和frame的状态*/
 enum BufFrame_e
 {
@@ -67,7 +60,6 @@ struct mediainfo_st
     int64_t curtimestamp;
     int fps;
     char *filename;
-    int stat; // enum File_e
     struct buf_st *buffer;
     struct frame_st *frame;
     char *buffer_audio; // not free
