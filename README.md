@@ -19,7 +19,8 @@
 # RTSP拉流
 * 把要回放的视频放到mp4path中，通过rtsp://ip:8554/mp4文件名字即可回放。
 * 注意视频不要包含B帧。
-<img width="960" alt="e2f2bd57a083eb64558eef44dd55d85" src="https://github.com/BreakingY/rtsp-over-tcp-server/assets/99859929/8c810989-529b-479f-be15-b89fd49e7870">
+<img width="960" alt="ba2301fb0825b0bab489b9f474fc9cb" src="https://github.com/BreakingY/simple-rtsp-server/assets/99859929/24308b63-235a-4a75-adc7-67c43bde51dd">
+
 
 
 # 技术交流
