@@ -107,6 +107,7 @@ typedef struct
     int is_audio_aac_pcma;
     int audio_sample_rate;
     int audio_channels;
+    int profile;
     // uint8_t *vps;
     // int vps_size;
     // uint8_t *sps;
@@ -134,5 +135,6 @@ int handleCmd_500(char *result, int cseq);
 int check_media_info(const char *filename, MediaInfo *info);
 void free_media_info(MediaInfo *info);
 int generateSDP(char *file, char *localIp, char *buffer, int buffer_len);
+void adts_header(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels);
 
 #endif

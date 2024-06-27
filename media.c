@@ -149,7 +149,7 @@ static void *parseMp4SendDataThd(void *arg)
         {
             AVRational time_base = mp4info->context->streams[mp4info->av_pkt.stream_index]->time_base;
             AVRational time_base_q = {1, AV_TIME_BASE};
-            mp4info->curtimestamp = av_rescale_q(mp4info->av_pkt.pts, time_base, time_base_q); // 微妙
+            mp4info->curtimestamp = av_rescale_q(mp4info->av_pkt.dts, time_base, time_base_q); // 微妙
             mp4info->now_stream_index = mp4info->av_pkt.stream_index;
             if (mp4info->av_pkt.stream_index == mp4info->video_stream_index)
             {
@@ -234,7 +234,7 @@ void *creatMedia(char *path_filename,void *call_back, void *arg){
         printf("avformat_open_input error,\n");
         return NULL;
     }
-
+    avformat_find_stream_info(mp4->context, NULL);
     mp4->video_stream_index = av_find_best_stream(mp4->context, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     mp4->audio_stream_index = av_find_best_stream(mp4->context, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (mp4->video_stream_index >= 0)

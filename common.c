@@ -234,6 +234,7 @@ int check_media_info(const char *filename, MediaInfo *info)
                 info->is_audio_aac_pcma = 1;
                 info->audio_sample_rate = codecpar->sample_rate;
                 info->audio_channels = codecpar->channels;
+                info->profile = codecpar->profile;
                 if(codecpar->codec_id == AV_CODEC_ID_AAC)
                     info->audio_type = AAC;
                 else
@@ -259,6 +260,65 @@ void free_media_info(MediaInfo *info)
     // {
     //     free(info->pps);
     // }
+}
+/*
+#define FF_PROFILE_AAC_MAIN 0
+#define FF_PROFILE_AAC_LOW  1
+#define FF_PROFILE_AAC_SSR  2
+#define FF_PROFILE_AAC_LTP  3
+#define FF_PROFILE_AAC_HE   4
+#define FF_PROFILE_AAC_HE_V2 28
+#define FF_PROFILE_AAC_LD   22
+#define FF_PROFILE_AAC_ELD  38
+#define FF_PROFILE_MPEG2_AAC_LOW 128
+#define FF_PROFILE_MPEG2_AAC_HE  131
+*/
+static int get_audio_obj_type(int aactype){
+    //AAC HE V2 = AAC LC + SBR + PS
+    //AAV HE = AAC LC + SBR
+    //所以无论是 AAC_HEv2 还是 AAC_HE 都是 AAC_LC
+    switch(aactype){
+        case 0:
+        case 2:
+        case 3:
+            return aactype+1;
+        case 1:
+        case 4:
+        case 28:
+            return 2;
+        default:
+            return 2;
+
+    }
+}
+
+static int get_sample_rate_index(int freq, int aactype){
+
+    int i = 0;
+    int freq_arr[13] = {
+        96000, 88200, 64000, 48000, 44100, 32000,
+        24000, 22050, 16000, 12000, 11025, 8000, 7350
+    };
+
+    //如果是 AAC HEv2 或 AAC HE, 则频率减半
+    if(aactype == 28 || aactype == 4){
+        freq /= 2;
+    }
+
+    for(i=0; i< 13; i++){
+        if(freq == freq_arr[i]){
+            return i;
+        }
+    }
+    return 4;//默认是44100
+}
+
+static int get_channel_config(int channels, int aactype){
+    //如果是 AAC HEv2 通道数减半
+    if(aactype == 28){
+        return (channels / 2);
+    }
+    return channels;
 }
 int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
 {
@@ -301,11 +361,14 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
     {
         if (info.audio_type == AAC)
         {
+            char config[10] = {0};
+            int index = get_sample_rate_index(info.audio_sample_rate, info.profile);
+            sprintf(config, "%02x%02x", (uint8_t)((get_audio_obj_type(info.profile)) << 3)|(index >> 1), (uint8_t)((index << 7)|(info.audio_channels << 3)));
             sprintf(buffer + strlen(buffer), "m=audio 0 RTP/AVP %d\r\n"
                                              "a=rtpmap:%d MPEG4-GENERIC/%u/%u\r\n"
-                                             "a=fmtp:%d profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3\r\n"
+                                             "a=fmtp:%d streamtype=5;profile-level-id=1;mode=AAC-hbr;config=%04u;sizelength=13;indexlength=3;indexdeltalength=3\r\n"
                                              "a=control:track1\r\n",
-                    RTP_PAYLOAD_TYPE_AAC, RTP_PAYLOAD_TYPE_AAC, info.audio_sample_rate, info.audio_channels, RTP_PAYLOAD_TYPE_AAC);
+                    RTP_PAYLOAD_TYPE_AAC, RTP_PAYLOAD_TYPE_AAC, info.audio_sample_rate, info.audio_channels, RTP_PAYLOAD_TYPE_AAC, atoi(config));
         }
         else
         {
@@ -317,4 +380,36 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
     }
     free_media_info(&info);
     return 0;
+}
+// aactype = ffmpeg --> AVCodecParameters *codecpar->profile
+void adts_header(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels){
+
+    int audio_object_type = get_audio_obj_type(aactype);
+    int sampling_frequency_index = get_sample_rate_index(frequency, aactype);
+    int channel_config = get_channel_config(channels, aactype);
+
+    int adts_len = data_len + 7;
+
+    adts_header_buffer[0] = 0xff;         //syncword:0xfff                          高8bits
+    adts_header_buffer[1] = 0xf0;         //syncword:0xfff                          低4bits
+    adts_header_buffer[1] |= (0 << 3);    //MPEG Version:0 for MPEG-4,1 for MPEG-2  1bit
+    adts_header_buffer[1] |= (0 << 1);    //Layer:0                                 2bits
+    adts_header_buffer[1] |= 1;           //protection absent:1                     1bit
+
+    adts_header_buffer[2] = (audio_object_type - 1)<<6;            //profile:audio_object_type - 1                      2bits
+    adts_header_buffer[2] |= (sampling_frequency_index & 0x0f)<<2; //sampling frequency index:sampling_frequency_index  4bits
+    adts_header_buffer[2] |= (0 << 1);                             //private bit:0                                      1bit
+    adts_header_buffer[2] |= (channel_config & 0x04)>>2;           //channel configuration:channel_config               高1bit
+
+    adts_header_buffer[3] = (channel_config & 0x03)<<6;     //channel configuration:channel_config      低2bits
+    adts_header_buffer[3] |= (0 << 5);                      //original：0                               1bit
+    adts_header_buffer[3] |= (0 << 4);                      //home：0                                   1bit
+    adts_header_buffer[3] |= (0 << 3);                      //copyright id bit：0                       1bit
+    adts_header_buffer[3] |= (0 << 2);                      //copyright id start：0                     1bit
+    adts_header_buffer[3] |= ((adts_len & 0x1800) >> 11);           //frame length：value   高2bits
+
+    adts_header_buffer[4] = (uint8_t)((adts_len & 0x7f8) >> 3);     //frame length:value    中间8bits
+    adts_header_buffer[5] = (uint8_t)((adts_len & 0x7) << 5);       //frame length:value    低3bits
+    adts_header_buffer[5] |= 0x1f;                                 //buffer fullness:0x7ff 高5bits
+    adts_header_buffer[6] = 0xfc;
 }
