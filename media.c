@@ -313,6 +313,9 @@ struct audioinfo_st getAudioInfo(void *context){
     if(mp4 == NULL){
         return info;
     }
+    if(mp4->audio_stream_index < 0){
+        return info;
+    }
     info.sample_rate = mp4->context->streams[mp4->audio_stream_index]->codecpar->sample_rate;
     info.channels = mp4->context->streams[mp4->audio_stream_index]->codecpar->channels;
     info.profile = mp4->context->streams[mp4->audio_stream_index]->codecpar->profile;
