@@ -4,7 +4,8 @@
 * 使用epoll发送数据。
 * ffmpeg版本 >= 4.x。
 * 文件结束后会自动循环。
-![rtsp测试服务器设计](https://github.com/BreakingY/simple-rtsp-server/assets/99859929/6bcd9bf5-b6a9-48aa-9864-79b34916b45a)
+![rtsp测试服务器设计](https://github.com/BreakingY/simple-rtsp-server/assets/99859929/5b1e7c1e-d868-4b11-8f91-631abccec18c)
+
 
 
 
