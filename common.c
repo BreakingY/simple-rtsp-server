@@ -1,4 +1,5 @@
 #include "common.h"
+#include "md5.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -96,6 +97,169 @@ char *getLineFromBuf(char *buf, char *line)
     ++buf;
     return buf;
 }
+static char *extract_value(const char *source, const char *key) {
+    const char *start = strstr(source, key);
+    if (!start) {
+        return NULL;
+    }
+    start += strlen(key) + 2; // 跳过 key="
+
+    const char *end = strchr(start, '"');
+    if (!end) {
+        return NULL;
+    }
+
+    size_t len = end - start;
+    char *value = (char *)malloc(len + 1);
+    if (!value) {
+        return NULL;
+    }
+
+    strncpy(value, start, len);
+    value[len] = '\0';
+    return value;
+}
+
+AuthorizationInfo *find_authorization(const char *request) {
+    const char *auth_start = strstr(request, "Authorization: ");
+    if (!auth_start) {
+        return NULL; // Authorization字段未找到
+    }
+
+    auth_start += strlen("Authorization: ");
+    const char *auth_end = strchr(auth_start, '\r');
+    if (!auth_end) {
+        auth_end = strchr(auth_start, '\n');
+    }
+    if (!auth_end) {
+        return NULL; // 无法找到行尾
+    }
+
+    char *auth_value = (char *)malloc(auth_end - auth_start + 1);
+    if (!auth_value) {
+        return NULL; // 内存分配失败
+    }
+    strncpy(auth_value, auth_start, auth_end - auth_start);
+    auth_value[auth_end - auth_start] = '\0';
+
+    AuthorizationInfo *auth_info = (AuthorizationInfo *)malloc(sizeof(AuthorizationInfo));
+    if (!auth_info) {
+        free(auth_value);
+        return NULL; // 内存分配失败
+    }
+
+    auth_info->username = extract_value(auth_value, "username");
+    auth_info->realm = extract_value(auth_value, "realm");
+    auth_info->nonce = extract_value(auth_value, "nonce");
+    auth_info->uri = extract_value(auth_value, "uri");
+    auth_info->response = extract_value(auth_value, "response");
+
+    free(auth_value);
+    return auth_info;
+}
+
+void free_authorization_info(AuthorizationInfo *auth_info) {
+    if (auth_info) {
+        free(auth_info->username);
+        free(auth_info->realm);
+        free(auth_info->nonce);
+        free(auth_info->uri);
+        free(auth_info->response);
+        free(auth_info);
+    }
+}
+// 生成随机字符串
+static void generate_random_string(char *buf, int length) {
+    static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (size_t i = 0; i < length; i++) {
+        buf[i] = charset[rand() % (sizeof(charset) - 1)];
+    }
+}
+
+// 生成nonce
+void generate_nonce(char *nonce, int length) {
+    if (length < 1) {
+        nonce[0] = '\0';
+        return;
+    }
+    memset(nonce, 0, length);
+    srand((unsigned int)time(NULL));
+
+    char random_string[128] = {0};
+    generate_random_string(random_string, sizeof(random_string));
+
+    char timestamp[32];
+    snprintf(timestamp, sizeof(timestamp), "%ld", (long)time(NULL));
+
+    char combined[256] = {0};
+    snprintf(combined, sizeof(combined), "%s%s", random_string, timestamp);
+
+    MD5_CTX md5;
+    unsigned char decrypt[16];
+    MD5Init(&md5);
+    MD5Update(&md5, combined, strlen(combined));
+    MD5Final(&md5, decrypt);
+    for(int i=0; i < 16; i++) {
+        snprintf(&(nonce[i * 2]), 3, "%02x", decrypt[i]);
+    }
+    return;
+}
+
+int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response){
+    // md5(username:realm:password)
+    unsigned char res1[16];
+    char res1_hex[33] = {0};
+    char buffer1[256] = {0};
+    sprintf(buffer1,"%s:%s:%s", username, realm, password);
+    MD5_CTX md5_1;
+    MD5Init(&md5_1);
+    MD5Update(&md5_1, buffer1, strlen(buffer1));
+    MD5Final(&md5_1, res1);
+    for(int i=0; i < 16; i++) {
+        snprintf(&(res1_hex[i * 2]), 3, "%02x", res1[i]);
+    }
+    // md5(public_method:url)
+    unsigned char res2[16];
+    char res2_hex[33] = {0};
+    char buffer2[256] = {0};
+    sprintf(buffer2,"%s:%s", method, uri);
+    MD5_CTX md5_2;
+    MD5Init(&md5_2);
+    MD5Update(&md5_2, buffer2, strlen(buffer2));
+    MD5Final(&md5_2, res2);
+    for(int i=0; i < 16; i++) {
+        snprintf(&(res2_hex[i * 2]), 3, "%02x", res2[i]);
+    }
+    // md5( md5(username:realm:password):nonce:md5(public_method:url) )
+    unsigned char res[16];
+    char res_hex[33] = {0};
+    char buffer[512] = {0};
+    sprintf(buffer,"%s:%s:%s", res1_hex, nonce, res2_hex);
+    MD5_CTX md5;
+    MD5Init(&md5);
+    MD5Update(&md5, buffer, strlen(buffer));
+    MD5Final(&md5, res);
+    for(int i=0; i < 16; i++) {
+        snprintf(&(res_hex[i * 2]), 3, "%02x", res[i]);
+    }
+    // printf("res:%s response:%s\n", res_hex, response);
+    if(strcmp(res_hex, response) == 0){
+        return 0;
+    }
+    return -1;
+}
+
+int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce){
+	sprintf(result, "RTSP/1.0 401 Unauthorized\r\n"
+			        "CSeq: %d\r\n"
+			        "WWW-Authenticate: Digest realm=\"%s\", nonce=\"%s\"\r\n"
+			        "\r\n",
+                cseq,
+                realm,
+                nonce);
+
+	return 0;
+}
 int handleCmd_OPTIONS(char *result, int cseq)
 {
     sprintf(result, "RTSP/1.0 200 OK\r\n"
@@ -155,9 +319,8 @@ int handleCmd_PLAY(char *result, int cseq, char *url_setup)
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
                     "Range: npt=0.000-\r\n"
-                    "Session: 66334873; timeout=60\r\n"
-                    "RTP-Info: url=%s;seq=0;rtptime=0\r\n\r\n",
-            cseq, url_setup);
+                    "Session: 66334873; timeout=60\r\n\r\n",
+            cseq);
 
     return 0;
 }

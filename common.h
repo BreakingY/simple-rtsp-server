@@ -115,6 +115,13 @@ typedef struct
     // uint8_t *pps;
     // int pps_size;
 } MediaInfo;
+typedef struct {
+    char *username;
+    char *realm;
+    char *nonce;
+    char *uri;
+    char *response;
+} AuthorizationInfo;
 int createTcpSocket();
 int createUdpSocket();
 int bindSocketAddr(int sockfd, const char *ip, int port);
@@ -124,6 +131,12 @@ void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extensi
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc);
 char *getLineFromBuf(char *buf, char *line);
 
+AuthorizationInfo* find_authorization(const char *request);
+void free_authorization_info(AuthorizationInfo *auth_info);
+void generate_nonce(char *nonce, int length);
+int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response);
+
+int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce);
 int handleCmd_OPTIONS(char *result, int cseq);
 int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp);
 int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientip, int sig_0);

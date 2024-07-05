@@ -9,6 +9,9 @@
 #include <unistd.h>
 #define BUF_MAX_SIZE (1024 * 1024)
 char *mp4Dir = "mp4path/\0"; // MP4文件存放位置
+int auth = 1;
+#define USER "admin"
+#define PASSWORD "123456"
 /*doClientThd线程参数*/
 struct thd_arg_st
 {
@@ -119,6 +122,9 @@ void *doClientThd(void *arg)
     path_tmp[strlen(mp4Dir)] = '\0';
 
     int fd;
+    char *realm = "simple-rtsp-server";
+    char nonce[33] = {0};
+    generate_nonce(nonce, sizeof(nonce));
     while (1)
     {
         int recv_len;
@@ -153,6 +159,32 @@ void *doClientThd(void *arg)
                     goto out;
                 }
                 break;
+            }
+        }
+        if(auth == 1){
+            // authorization
+            if(!strcmp(method, "SETUP") || !strcmp(method, "DESCRIBE") || !strcmp(method, "PLAY")){
+                AuthorizationInfo *auth_info = find_authorization(recv_buf);
+                if(auth_info == NULL){
+                    handleCmd_Unauthorized(send_buf, cseq, realm, nonce);
+                    printf("---------------S->C--------------\n");
+                    printf("%s", send_buf);
+                    send(client_sock_fd, send_buf, strlen(send_buf), 0);
+                    continue;
+                }
+                else{
+                    // printf("nonce:%s\n", auth_info->nonce);
+                    // printf("realm:%s\n", auth_info->realm);
+                    // printf("response:%s\n", auth_info->response);
+                    // printf("uri:%s\n", auth_info->uri);
+                    // printf("username:%s\n", auth_info->username);
+                    // 鉴权校验
+                    int ret = authorization_verify(USER, PASSWORD, realm, nonce, auth_info->uri, method, auth_info->response);
+                    free_authorization_info(auth_info);
+                    if(ret < 0){ // 鉴权失败
+                        goto out;
+                    }
+                }
             }
         }
 
@@ -356,6 +388,11 @@ over:
 
 int main(int argc, char *argv[])
 {
+    if(argc < 2){
+        printf("./rtsp_server auth(0-not authentication; 1-authentication)\n");
+        return -1;
+    }
+    auth = atoi(argv[1]);
     int server_sock_fd;
     int ret;
     signal(SIGINT, sig_handler);

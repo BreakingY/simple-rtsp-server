@@ -4,6 +4,7 @@
 * 使用epoll发送数据。
 * ffmpeg版本 >= 4.x。
 * 文件结束后会自动循环。
+* 支持鉴权，MD5依赖 https://github.com/talent518/md5。
 ![rtsp测试服务器设计](https://github.com/BreakingY/simple-rtsp-server/assets/99859929/f63e22aa-0d42-49c4-b72c-e4b0e0bf65c3)
 
 
@@ -18,7 +19,7 @@
 * cmake ..
 * make -j
 * cp -r ../mp4path .
-* ./rtsp_server
+* ./rtsp_server 0 (0-不鉴权；1-鉴权)
 
 # RTSP拉流
 * 把要回放的视频放到mp4path中，通过rtsp://ip:8554/mp4文件名字即可回放。
