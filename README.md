@@ -22,7 +22,10 @@
 * ./rtsp_server 0 (0-不鉴权；1-鉴权)
 
 # RTSP拉流
-* 把要回放的视频放到mp4path中，rtsp地址：不加鉴权-rtsp://ip:8554/mp4文件名字、鉴权-rtsp://admin:123456@ip:8554/mp4文件名字。
+* 把要回放的视频放到mp4path中。
+* rtsp地址：
+  * 不加鉴权：rtsp://ip:8554/mp4文件名字
+  * 鉴权：rtsp://admin:123456@ip:8554/mp4文件名字。
 * 注意视频不要包含B帧。
 <img width="960" alt="ba2301fb0825b0bab489b9f474fc9cb" src="https://github.com/BreakingY/simple-rtsp-server/assets/99859929/24308b63-235a-4a75-adc7-67c43bde51dd">
 
