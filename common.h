@@ -139,9 +139,9 @@ int authorization_verify(char *username, char *password, char *realm, char *nonc
 int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce);
 int handleCmd_OPTIONS(char *result, int cseq);
 int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp);
-int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientip, int sig_0);
-int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort);
-int handleCmd_PLAY(char *result, int cseq, char *url);
+int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientip, int sig_0, char *session);
+int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort, char *session);
+int handleCmd_PLAY(char *result, int cseq, char *url, char *session);
 int handleCmd_404(char *result, int cseq);
 int handleCmd_500(char *result, int cseq);
 

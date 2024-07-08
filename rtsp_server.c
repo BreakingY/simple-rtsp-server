@@ -63,7 +63,15 @@ int create_rtp_sockets(int *fd1, int *fd2, int *port1, int *port2)
     close(*fd2);
     return -1;
 }
-
+static void generate_session_id(char *session_id, size_t size) {
+    if (size < 9) {
+        return;
+    }
+    time_t timestamp = time(NULL);
+    srand((unsigned int)timestamp);
+    int random_part = rand() % 1000000;
+    snprintf(session_id, size, "%02ld%06d", timestamp % 100, random_part);
+}
 /*处理客户端rtsp请求*/
 void *doClientThd(void *arg)
 {
@@ -125,6 +133,8 @@ void *doClientThd(void *arg)
     char *realm = "simple-rtsp-server";
     char nonce[33] = {0};
     generate_nonce(nonce, sizeof(nonce));
+    char session_id[512];
+    generate_session_id(session_id, sizeof(session_id));
     while (1)
     {
         int recv_len;
@@ -296,7 +306,7 @@ void *doClientThd(void *arg)
             sscanf(url, "rtsp://%[^:]:", localIp);
             int ret = generateSDP(path_tmp, localIp, sdp, sizeof(sdp));
             if (ret < 0)
-            { // mp4文件有问题，或者视频不是H264/H265,音频不是AAC
+            { // mp4文件有问题，或者视频不是H264/H265,音频不是AAC/PCMA
                 handleCmd_500(send_buf, cseq);
                 send(client_sock_fd, send_buf, strlen(send_buf), 0);
                 goto out;
@@ -313,12 +323,12 @@ void *doClientThd(void *arg)
             if (memcmp(track, "track0", 6) == 0)
             {
                 create_rtp_sockets(&server_udp_socket_rtp_fd, &server_udp_socket_rtcp_fd, &server_rtp_port, &server_rtp_port);
-                handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port, server_rtp_port);
+                handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port, server_rtp_port, session_id);
             }
             else
             {
                 create_rtp_sockets(&server_udp_socket_rtp_1_fd, &server_udp_socket_rtcp_1_fd, &server_rtp_port_1, &server_rtp_port_1);
-                handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port_1, server_rtp_port_1);
+                handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port_1, server_rtp_port_1, session_id);
             }
         }
         else if (!strcmp(method, "SETUP") && ture_of_rtp_tcp == 1) // RTP_OVER_TCP
@@ -326,11 +336,11 @@ void *doClientThd(void *arg)
             sscanf(url, "rtsp://%[^:]:", local_ip);
             if (memcmp(track, "track0", 6) == 0)
             {
-                handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_0);
+                handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_0, session_id);
             }
             else
             {
-                handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_2);
+                handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_2, session_id);
             }
         }
         else if (!strcmp(method, "PLAY"))
@@ -338,7 +348,7 @@ void *doClientThd(void *arg)
             memset(url_play, 0, sizeof(url_play));
             memset(track, 0, sizeof(track));
             strcpy(url_play, url);
-            if (handleCmd_PLAY(send_buf, cseq, url_play))
+            if (handleCmd_PLAY(send_buf, cseq, url_play, session_id))
             {
                 printf("failed to handle play\n");
                 goto out;

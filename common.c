@@ -284,43 +284,46 @@ int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp)
 
     return 0;
 }
-int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientIp, int sig_0)
+int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientIp, int sig_0, char *session)
 {
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
                     "Transport: RTP/AVP/TCP;unicast;destination=%s;source=%s;interleaved=%d-%d\r\n"
-                    "Session: 66334873\r\n"
+                    "Session: %s\r\n"
                     "\r\n",
             cseq,
             clientIp,
             localIp,
             sig_0,
-            sig_0 + 1);
+            sig_0 + 1,
+            session);
 
     return 0;
 }
-int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort)
+int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort, char *session)
 {
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
                     "Transport: RTP/AVP;unicast;client_port=%d-%d;server_port=%d-%d\r\n"
-                    "Session: 66334873\r\n"
+                    "Session: %s\r\n"
                     "\r\n",
             cseq,
             clientRtpPort,
             clientRtpPort + 1,
             serverRtpPort,
-            serverRtpPort + 1);
+            serverRtpPort + 1,
+            session);
 
     return 0;
 }
-int handleCmd_PLAY(char *result, int cseq, char *url_setup)
+int handleCmd_PLAY(char *result, int cseq, char *url_setup, char *session)
 {
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
                     "Range: npt=0.000-\r\n"
-                    "Session: 66334873; timeout=60\r\n\r\n",
-            cseq);
+                    "Session: %s; timeout=60\r\n\r\n",
+            cseq,
+            session);
 
     return 0;
 }
