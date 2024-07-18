@@ -71,6 +71,7 @@ static void generate_session_id(char *session_id, size_t size) {
     srand((unsigned int)timestamp);
     int random_part = rand() % 1000000;
     snprintf(session_id, size, "%02ld%06d", timestamp % 100, random_part);
+    return;
 }
 /*处理客户端rtsp请求*/
 void *doClientThd(void *arg)
@@ -387,13 +388,13 @@ out:
     free(recv_buf);
     free(send_buf);
     free(arg);
-    return;
+    return NULL;
 over:
 
     free(recv_buf);
     free(send_buf);
     free(arg);
-    return;
+    return NULL;
 }
 
 int main(int argc, char *argv[])

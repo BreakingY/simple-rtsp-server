@@ -79,6 +79,7 @@ void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extensi
     rtpPacket->rtpHeader.seq = seq;
     rtpPacket->rtpHeader.timestamp = timestamp;
     rtpPacket->rtpHeader.ssrc = ssrc;
+    return;
 }
 
 char *getLineFromBuf(char *buf, char *line)
@@ -167,6 +168,7 @@ void free_authorization_info(AuthorizationInfo *auth_info) {
         free(auth_info->response);
         free(auth_info);
     }
+    return;
 }
 // 生成随机字符串
 static void generate_random_string(char *buf, int length) {
@@ -174,6 +176,7 @@ static void generate_random_string(char *buf, int length) {
     for (size_t i = 0; i < length; i++) {
         buf[i] = charset[rand() % (sizeof(charset) - 1)];
     }
+    return;
 }
 
 // 生成nonce
@@ -426,6 +429,7 @@ void free_media_info(MediaInfo *info)
     // {
     //     free(info->pps);
     // }
+    return;
 }
 /*
 #define FF_PROFILE_AAC_MAIN 0
@@ -456,6 +460,7 @@ static int get_audio_obj_type(int aactype){
             return 2;
 
     }
+    return 2;
 }
 
 static int get_sample_rate_index(int freq, int aactype){
@@ -578,4 +583,5 @@ void adts_header(char *adts_header_buffer, int data_len, int aactype, int freque
     adts_header_buffer[5] = (uint8_t)((adts_len & 0x7) << 5);       //frame length:value    低3bits
     adts_header_buffer[5] |= 0x1f;                                 //buffer fullness:0x7ff 高5bits
     adts_header_buffer[6] = 0xfc;
+    return;
 }

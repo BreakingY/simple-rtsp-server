@@ -288,6 +288,7 @@ int initClient(struct clientinfo_st *clientinfo)
     clientinfo->pos_list_1 = 0;
     clientinfo->packet_num_1 = 0;
     clientinfo->pos_last_packet_1 = 0;
+    return 0;
 }
 int clearClient(struct clientinfo_st *clientinfo)
 {
@@ -662,6 +663,7 @@ void mediaCallBack(void *arg){
         }
     }
     pthread_mutex_unlock(&session->mut);
+    return;
 }
 int get_free_clientinfo(int pos)
 {
@@ -775,6 +777,7 @@ void delSession(int pos)
     pthread_mutex_lock(&mut_clientcount);
     sum_client -= client_num;
     pthread_mutex_unlock(&mut_clientcount);
+    return;
 }
 void moduleInit()
 {
@@ -785,6 +788,7 @@ void moduleInit()
         perror("epollLoop pthread_create()");
     }
     pthread_detach(epoll_thd);
+    return;
 }
 
 void moduleDel()
@@ -797,6 +801,7 @@ void moduleDel()
     pthread_mutex_destroy(&mut_clientcount);
     run_flag = 0;
     closeEpoll();
+    return;
 }
 /*添加一个客户端*/
 int addClient(char *path_filename, int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, char *client_ip, int client_rtp_port,
