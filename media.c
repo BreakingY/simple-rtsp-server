@@ -164,6 +164,7 @@ static void *parseMp4SendDataThd(void *arg)
             while (mp4info->run_flag == 1){
                 mp4info->buffer->buf_size = 0;
                 mp4info->buffer->pos = 0;
+                av_packet_unref(&mp4info->av_pkt);
                 ret = av_bsf_receive_packet(mp4info->bsf_ctx, &mp4info->av_pkt);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF){
                     break;
