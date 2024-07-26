@@ -3,26 +3,7 @@ static double r2d(AVRational r)
 {
     return r.den == 0 ? 0 : (double)r.num / (double)r.den;
 }
-static int mp4ToAnnexb(struct mediainfo_st *mp4info, AVPacket *v_packet)
-{
-    uint8_t *out_data = NULL;
-    int out_size = 0;
-    int ret = 0;
 
-    av_bitstream_filter_filter(mp4info->h26xbsfc, mp4info->context->streams[mp4info->video_stream_index]->codec, NULL, &out_data, &out_size, v_packet->data, v_packet->size, v_packet->flags & AV_PKT_FLAG_KEY);
-
-    AVPacket tmp_pkt;
-    av_init_packet(&tmp_pkt);
-    av_packet_copy_props(&tmp_pkt, v_packet);
-    av_packet_from_data(&tmp_pkt, out_data, out_size);
-    tmp_pkt.size = out_size;
-    av_packet_unref(v_packet);
-
-    av_copy_packet(v_packet, &tmp_pkt);
-    av_packet_unref(&tmp_pkt);
-
-    return 0;
-}
 static int startCode3(char *buf)
 {
     if (buf[0] == 0 && buf[1] == 0 && buf[2] == 1)
@@ -136,6 +117,7 @@ static void *parseMp4SendDataThd(void *arg)
     signal(SIGKILL, sig_handler_media);
     struct mediainfo_st *mp4info = (struct mediainfo_st *)arg;
     int findstream = 0;
+    int ret;
     if (mp4info == NULL)
         pthread_exit(NULL);
     int64_t start_time = av_gettime();
@@ -154,14 +136,6 @@ static void *parseMp4SendDataThd(void *arg)
             if (mp4info->av_pkt.stream_index == mp4info->video_stream_index)
             {
                 findstream = 1;
-                /*帧数据写道buf中*/
-                mp4info->buffer->buf_size = 0;
-                mp4info->buffer->pos = 0;
-                mp4ToAnnexb(mp4info, &mp4info->av_pkt);
-                mp4info->buffer->buf = mp4info->av_pkt.data;
-                mp4info->buffer->buf_size = mp4info->av_pkt.size;
-                /*设置buf为READ状态*/
-                mp4info->buffer->stat = READ;
                 break;
             }
             if (mp4info->av_pkt.stream_index == mp4info->audio_stream_index)
@@ -185,15 +159,32 @@ static void *parseMp4SendDataThd(void *arg)
         int64_t now_time = av_gettime() - start_time;
         if (mp4info->curtimestamp > now_time)
             av_usleep(mp4info->curtimestamp - now_time);
-        while ((mp4info->buffer->stat == READ) || (mp4info->now_stream_index == mp4info->audio_stream_index))
-        {                    // video audio
-            praseFrame(mp4info); // 如果buf处于可读状态就送去解析NALU
-            mp4info->data_call_back(mp4info->arg); // 传递音视频
-            mp4info->frame->stat = WRITE;
-            if ((mp4info->now_stream_index == mp4info->audio_stream_index) || (mp4info->run_flag == 0))
-            {
-                break;
+        if(mp4info->av_pkt.stream_index == mp4info->video_stream_index){ // video  mp4 To Annexb
+            av_bsf_send_packet(mp4info->bsf_ctx, &mp4info->av_pkt);
+            while (mp4info->run_flag == 1){
+                mp4info->buffer->buf_size = 0;
+                mp4info->buffer->pos = 0;
+                ret = av_bsf_receive_packet(mp4info->bsf_ctx, &mp4info->av_pkt);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF){
+                    break;
+                }
+                else if (ret < 0) {
+                    printf("av bsf receive pkt failed!\n");
+                    break;
+                }
+                mp4info->buffer->buf = mp4info->av_pkt.data;
+                mp4info->buffer->buf_size = mp4info->av_pkt.size;
+                /*设置buf为READ状态*/
+                mp4info->buffer->stat = READ;
+                while((mp4info->buffer->stat == READ) && (mp4info->run_flag == 1)){
+                    praseFrame(mp4info); // 如果buf处于可读状态就送去解析NALU
+                    mp4info->data_call_back(mp4info->arg); // 传递音视频
+                    mp4info->frame->stat = WRITE;
+                }
             }
+        }
+        else if(mp4info->now_stream_index == mp4info->audio_stream_index){ // audio
+            mp4info->data_call_back(mp4info->arg);
         }
         av_packet_unref(&mp4info->av_pkt);
     }
@@ -217,7 +208,7 @@ void *creatMedia(char *path_filename,void *call_back, void *arg){
     mp4->av_pkt.data = NULL;
     mp4->av_pkt.size = 0;
     mp4->curtimestamp = 0;
-    mp4->h26xbsfc = NULL;
+    mp4->bsf_ctx = NULL;
     mp4->video_type = VIDEO_NONE;
     mp4->audio_type = AUDIO_NONE;
 
@@ -244,12 +235,18 @@ void *creatMedia(char *path_filename,void *call_back, void *arg){
         AVCodecParameters *codecpar = as->codecpar;
         if (codecpar->codec_id == AV_CODEC_ID_H264)
         {
-            mp4->h26xbsfc = av_bitstream_filter_init("h264_mp4toannexb");
+            const AVBitStreamFilter *pfilter = av_bsf_get_by_name("h264_mp4toannexb");
+            av_bsf_alloc(pfilter, &mp4->bsf_ctx);
+            avcodec_parameters_copy(mp4->bsf_ctx->par_in, mp4->context->streams[mp4->video_stream_index]->codecpar);
+            av_bsf_init(mp4->bsf_ctx);
             mp4->video_type = VIDEO_H264;
         }
         else if (codecpar->codec_id == AV_CODEC_ID_H265 || codecpar->codec_id == AV_CODEC_ID_HEVC)
         {
-            mp4->h26xbsfc = av_bitstream_filter_init("hevc_mp4toannexb");
+            const AVBitStreamFilter *pfilter = av_bsf_get_by_name("hevc_mp4toannexb");
+            av_bsf_alloc(pfilter, &mp4->bsf_ctx);
+            avcodec_parameters_copy(mp4->bsf_ctx->par_in, mp4->context->streams[mp4->video_stream_index]->codecpar);
+            av_bsf_init(mp4->bsf_ctx);
             mp4->video_type = VIDEO_H265;
         }
     }
@@ -368,9 +365,9 @@ void destroyMedia(void *context){
     pthread_join(mp4->tid, NULL);
     avformat_close_input(&mp4->context);
     av_packet_free(&mp4->av_pkt);
-    if (mp4->h26xbsfc != NULL)
+    if (mp4->bsf_ctx != NULL)
     {
-        av_bitstream_filter_close(mp4->h26xbsfc);
+        av_bsf_free(&mp4->bsf_ctx);
     }
     if (mp4->filename != NULL)
     {

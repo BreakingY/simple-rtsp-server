@@ -53,7 +53,7 @@ struct mediainfo_st
 {
     AVFormatContext *context;
     AVPacket av_pkt;
-    AVBitStreamFilterContext *h26xbsfc;
+    AVBSFContext *bsf_ctx;
     int video_stream_index;
     int audio_stream_index;
     int now_stream_index;
