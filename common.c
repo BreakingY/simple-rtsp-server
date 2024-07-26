@@ -202,7 +202,7 @@ void generate_nonce(char *nonce, int length) {
     MD5Init(&md5);
     MD5Update(&md5, combined, strlen(combined));
     MD5Final(&md5, decrypt);
-    for(int i=0; i < 16; i++) {
+    for(int i = 0; i < 16; i++) {
         snprintf(&(nonce[i * 2]), 3, "%02x", decrypt[i]);
     }
     return;
@@ -218,7 +218,7 @@ int authorization_verify(char *username, char *password, char *realm, char *nonc
     MD5Init(&md5_1);
     MD5Update(&md5_1, buffer1, strlen(buffer1));
     MD5Final(&md5_1, res1);
-    for(int i=0; i < 16; i++) {
+    for(int i = 0; i < 16; i++) {
         snprintf(&(res1_hex[i * 2]), 3, "%02x", res1[i]);
     }
     // md5(public_method:url)
@@ -230,7 +230,7 @@ int authorization_verify(char *username, char *password, char *realm, char *nonc
     MD5Init(&md5_2);
     MD5Update(&md5_2, buffer2, strlen(buffer2));
     MD5Final(&md5_2, res2);
-    for(int i=0; i < 16; i++) {
+    for(int i = 0; i < 16; i++) {
         snprintf(&(res2_hex[i * 2]), 3, "%02x", res2[i]);
     }
     // md5( md5(username:realm:password):nonce:md5(public_method:url) )
@@ -242,7 +242,7 @@ int authorization_verify(char *username, char *password, char *realm, char *nonc
     MD5Init(&md5);
     MD5Update(&md5, buffer, strlen(buffer));
     MD5Final(&md5, res);
-    for(int i=0; i < 16; i++) {
+    for(int i = 0; i < 16; i++) {
         snprintf(&(res_hex[i * 2]), 3, "%02x", res[i]);
     }
     // printf("res:%s response:%s\n", res_hex, response);
@@ -451,7 +451,7 @@ static int get_audio_obj_type(int aactype){
         case 0:
         case 2:
         case 3:
-            return aactype+1;
+            return aactype + 1;
         case 1:
         case 4:
         case 28:
@@ -476,7 +476,7 @@ static int get_sample_rate_index(int freq, int aactype){
         freq /= 2;
     }
 
-    for(i=0; i< 13; i++){
+    for(i = 0; i < 13; i++){
         if(freq == freq_arr[i]){
             return i;
         }
