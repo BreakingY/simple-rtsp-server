@@ -212,7 +212,7 @@ void *creatMedia(char *path_filename,void *call_back, void *arg){
     mp4->bsf_ctx = NULL;
     mp4->video_type = VIDEO_NONE;
     mp4->audio_type = AUDIO_NONE;
-
+    mp4->context = avformat_alloc_context();
     int ret = avformat_open_input(&mp4->context, mp4->filename, NULL, NULL);
     if (ret < 0)
     {
@@ -365,6 +365,7 @@ void destroyMedia(void *context){
     mp4->run_flag = 0;
     pthread_join(mp4->tid, NULL);
     avformat_close_input(&mp4->context);
+    avformat_free_context(mp4->context);
     av_packet_free(&mp4->av_pkt);
     if (mp4->bsf_ctx != NULL)
     {
