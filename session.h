@@ -31,7 +31,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-
+extern int reloop_flag;
 void sig_handler(int s);
 void moduleInit();
 void moduleDel();

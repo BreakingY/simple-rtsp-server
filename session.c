@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+int reloop_flag = 1;
 #define CLIENTMAX 1024
 #define FILEMAX 1024
 #define VIDEO_DATA_MAX_SIZE 4 * 1024 * 1024
@@ -665,6 +666,18 @@ void mediaCallBack(void *arg){
     pthread_mutex_unlock(&session->mut);
     return;
 }
+void reloopCallBack(void *arg){
+    struct session_st *session = (struct session_st *)arg;
+    if(session == NULL){
+        return;
+    }
+    if(reloop_flag == 1){
+        return;
+    }
+    // printf("reloop_flag:%d\n",reloop_flag);
+    delSession(session->pos);
+    return;
+}
 int get_free_clientinfo(int pos)
 {
     for (int i = 0; i < CLIENTMAX; i++)
@@ -683,7 +696,7 @@ int addSession(int pos, char *path_filename, int client_sock_fd, int sig_0, int 
     pthread_mutex_lock(&mut_session);
     struct session_st *session;
     session = malloc(sizeof(struct session_st));
-    session->media = creatMedia(path_filename, mediaCallBack,session);
+    session->media = creatMedia(path_filename, mediaCallBack, reloopCallBack, session);
 
     session->filename = malloc(strlen(path_filename) + 1);
     memset(session->filename, 0, strlen(path_filename) + 1);
@@ -776,7 +789,9 @@ void delSession(int pos)
 
     pthread_mutex_lock(&mut_clientcount);
     sum_client -= client_num;
+    int cnt = sum_client;
     pthread_mutex_unlock(&mut_clientcount);
+    printf("sum_client:%d\n",cnt);
     return;
 }
 void moduleInit()

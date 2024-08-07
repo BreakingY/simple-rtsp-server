@@ -20,7 +20,7 @@
 * cmake ..
 * make -j
 * cp -r ../mp4path .
-* ./rtsp_server 0 (0-不鉴权；1-鉴权)
+* ./rtsp_server 0 (0-不鉴权；1-鉴权) 1(0-不循环播放 1-循环播放)
 
 # RTSP拉流
 * 把要回放的视频放到mp4path中。

@@ -399,11 +399,12 @@ over:
 
 int main(int argc, char *argv[])
 {
-    if(argc < 2){
-        printf("./rtsp_server auth(0-not authentication; 1-authentication)\n");
+    if(argc < 3){
+        printf("./rtsp_server auth(0-not authentication; 1-authentication) loop(0-not loop 1-loop)\n");
         return -1;
     }
     auth = atoi(argv[1]);
+    reloop_flag = atoi(argv[2]);
     int server_sock_fd;
     int ret;
     signal(SIGINT, sig_handler);

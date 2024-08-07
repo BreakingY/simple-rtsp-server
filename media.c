@@ -153,6 +153,7 @@ static void *parseMp4SendDataThd(void *arg)
             av_packet_unref(&mp4info->av_pkt);
             av_seek_frame(mp4info->context, -1, 0, AVSEEK_FLAG_BACKWARD);
             start_time = av_gettime();
+            mp4info->reloop_call_back(mp4info->arg);
             continue;
         }
         
@@ -192,10 +193,11 @@ static void *parseMp4SendDataThd(void *arg)
     printf("parseMp4SendDataThd exit\n");
     return NULL;
 }
-void *creatMedia(char *path_filename,void *call_back, void *arg){
+void *creatMedia(char *path_filename, void *data_call_back, void *close_call_back, void *arg){
     struct mediainfo_st *mp4;
     mp4 = malloc(sizeof(struct mediainfo_st));
-    mp4->data_call_back = call_back;
+    mp4->data_call_back = data_call_back;
+    mp4->reloop_call_back = close_call_back;
     mp4->arg = arg;
 
     mp4->filename = malloc(strlen(path_filename) + 1);

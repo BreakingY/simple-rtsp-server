@@ -67,6 +67,7 @@ struct mediainfo_st
     int video_type; // VIDEO_e
     int audio_type; // AUDIO_e
     void (*data_call_back)(void *arg);
+    void (*reloop_call_back)(void *arg);
     void *arg;
     pthread_t tid;
     int run_flag;
@@ -76,7 +77,7 @@ struct audioinfo_st{
     int channels;
     int profile;
 };
-void *creatMedia(char *path_filename, void *call_back, void *arg);
+void *creatMedia(char *path_filename, void *data_call_back, void *close_call_back, void *arg);
 enum VIDEO_e getVideoType(void *context);
 int nowStreamIsVideo(void *context);
 enum AUDIO_e getAudioType(void *context);
