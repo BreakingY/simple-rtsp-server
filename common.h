@@ -2,6 +2,8 @@
 #define _COMMON_H_
 
 #include <stdint.h>
+#include <string.h>
+#include <arpa/inet.h>
 
 #define RTP_VESION 2 // 版本
 
