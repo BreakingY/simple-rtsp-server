@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <pthread.h>
 enum VIDEO_e
 {
     VIDEO_H264 = 1,
