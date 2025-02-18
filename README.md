@@ -1,4 +1,5 @@
 # simple-rtsp-server
+[中文](./README_CN.md)
 * RTSP1.0
 * H264/H265/AAC/PCMA(G711a)
 * Support rtp over udp、rtp over tcp, support authentication
