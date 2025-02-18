@@ -16,6 +16,7 @@
 #define H264_NAL_PPS            8
 #define H264_NAL_AUD            9
 const char *file;
+const char *file_audio;
 int run_flag = 1;
 void *context;
 static int start_code3(uint8_t *buffer, int len){
@@ -100,7 +101,7 @@ int mpeg2_h264_new_access_unit(uint8_t *buffer, int len){
     
     return 0;
 }
-void *sendDataThd(void *arg){
+void *sendVideoDataThd(void *arg){
     FILE *fp = fopen(file, "r");
     if(fp == NULL){
         printf("file not exist\n");
@@ -134,14 +135,115 @@ void *sendDataThd(void *arg){
     }
     return NULL;
 }
+typedef struct adts_header_info_st {
+    // fixed
+    unsigned int syncword;
+    unsigned int id;
+    unsigned int layer;
+    unsigned int protection_absent;
+    unsigned int profile;
+    unsigned int sampling_frequency_index;
+    unsigned int private_bit;
+    unsigned int channel_configuration;
+    unsigned int original_copy;
+    unsigned int home;
+    // variable
+    unsigned int copyright_identification_bit;
+    unsigned int copyright_identification_start;
+    unsigned int aac_frame_length;
+    unsigned int adts_buffer_fullness;
+    unsigned int number_of_raw_data_block_in_frame;
+}adts_header_info;
+static const int sampling_frequencies[] = {
+    96000, // 0x0
+    88200, // 0x1
+    64000, // 0x2
+    48000, // 0x3
+    44100, // 0x4
+    32000, // 0x5
+    24000, // 0x6
+    22050, // 0x7
+    16000, // 0x8
+    12000, // 0x9
+    11025, // 0xa
+    8000   // 0xb
+           // 0xc d e f
+};
+static int parseAdtsHeader(uint8_t *in, int len, adts_header_info *res){
+    memset(res, 0, sizeof(*res));
+    if(len < 7){
+        return -1;
+    }
+    if ((in[0] == 0xFF) && ((in[1] & 0xF0) == 0xF0)){ // syncword
+        res->id = (in[1] & 0x08) >> 3;
+        res->layer = (in[1] & 0x06) >> 1;
+        res->protection_absent = in[1] & 0x01;
+        res->profile = (in[2] & 0xc0) >> 6;
+        res->sampling_frequency_index = (in[2] & 0x3c) >> 2;
+        res->private_bit = (in[2] & 0x02) >> 1;
+        res->channel_configuration = ((in[2] & 0x01) << 2) | ((in[3] & 0xc0) >> 6);
+        res->original_copy = (in[3] & 0x20) >> 5;
+        res->home = (in[3] & 0x10) >> 4;
+
+        res->copyright_identification_bit = (in[3] & 0x08) >> 3;
+        res->copyright_identification_start = (in[3] & 0x04) >> 2;
+        res->aac_frame_length = ((((in[3]) & 0x03) << 11) |
+                               ((in[4] & 0xFF) << 3) |
+                               (in[5] & 0xE0) >> 5);
+        res->adts_buffer_fullness = ((in[5] & 0x1f) << 6 |
+                                   (in[6] & 0xfc) >> 2);
+        res->number_of_raw_data_block_in_frame = (in[6] & 0x03);
+        return 0;
+    } 
+    else{
+        return -1;
+    }
+    return 0;
+}
+void *sendAudioDataThd(void *arg){
+    FILE *fp = fopen(file_audio, "r");
+    if(fp == NULL){
+        printf("file not exist\n");
+        exit(0);
+    }
+    uint8_t frame[4 * 1024];
+    int sample = 44100;
+    int ret;
+    while (run_flag == 1) {
+        int ret = fread(frame, 1, 7, fp);
+        if (ret < 7){
+            // printf("read over\n");
+            fseek(fp, 0, SEEK_SET);
+            continue;
+        }
+        adts_header_info header;
+        if(parseAdtsHeader(frame, ret, &header)){
+            printf("ParseAdtsHeader error\n");
+            break;
+        }
+        sample = sampling_frequencies[header.sampling_frequency_index];
+        ret = fread(frame + 7, 1, header.aac_frame_length - 7, fp);
+        if (ret < (header.aac_frame_length - 7)) {
+            printf("read aac frame error\n");
+            break;
+        }
+        ret = sessionSendAudioData(context, frame + 7, header.aac_frame_length - 7);
+        if(ret < 0){
+            printf("sessionSendAudioData error\n");
+        }
+        usleep(1000 * 23);
+    }
+    return NULL;
+}
 int main(int argc, char *argv[])
 {
     if(argc < 3){
-        printf("./rtsp_server_live auth(0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264)\n");
+        printf("./rtsp_server_live auth(0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)\n");
         return -1;
     }
     int auth = atoi(argv[1]);
     file = argv[2];
+    file_audio = argv[3];
     int ret = rtspModuleInit();
     if(ret < 0){
         printf("rtspModuleInit error\n");
@@ -158,14 +260,27 @@ int main(int argc, char *argv[])
         printf("sessionAddVideo error\n");
         return -1;
     }
-    printf("rtsp://%s:%d/live\n", SERVER_IP, SERVER_PORT);
-    pthread_t tid;
-    ret = pthread_create(&tid, NULL, sendDataThd, NULL);
+    ret = sessionAddAudio(context, AUDIO_AAC, 1, 44100, 2);
     if(ret < 0){
-        perror("sendDataThd pthread_create()");
+        printf("sessionAddVideo error\n");
         return -1;
     }
-    pthread_detach(tid);
+    printf("rtsp://%s:%d/live\n", SERVER_IP, SERVER_PORT);
+    pthread_t tid_v;
+    ret = pthread_create(&tid_v, NULL, sendVideoDataThd, NULL);
+    if(ret < 0){
+        perror("sendVideoDataThd pthread_create()");
+        return -1;
+    }
+    pthread_detach(tid_v);
+    pthread_t tid_a;
+    ret = pthread_create(&tid_a, NULL, sendAudioDataThd, NULL);
+    if(ret < 0){
+        perror("sendAudioDataThd pthread_create()");
+        return -1;
+    }
+    pthread_detach(tid_a);
+    // Need sendVideoDataThd and sendAudioDataThd to achieve audio and video synchronization. This is just a test and have not implemented audio and video synchronization
     ret = rtspStartServer(auth, SERVER_IP, SERVER_PORT, USER, PASSWORD);
     if(ret < 0){
         printf("rtspStartServer error\n");

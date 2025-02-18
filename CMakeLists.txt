@@ -33,3 +33,6 @@ target_link_libraries(rtsp_server_file rtsp_server)
 add_executable(rtsp_server_live ./example/rtsp_server_live.c)
 target_link_libraries(rtsp_server_live rtsp_server)
 
+add_executable(rtsp_server_live_av ./example/rtsp_server_live_av.c)
+target_link_libraries(rtsp_server_live_av rtsp_server)
+
