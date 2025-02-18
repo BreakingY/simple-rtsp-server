@@ -1,4 +1,5 @@
 #include "media.h"
+#ifdef RTSP_FILE_SERVER
 static double r2d(AVRational r)
 {
     return r.den == 0 ? 0 : (double)r.num / (double)r.den;
@@ -19,7 +20,7 @@ static int startCode4(char *buf)
     else
         return 0;
 }
-/*从buf中读取一个NALU数据到frame中*/
+/*Read a NALU data from buf to frame*/
 static int getNALUFromBuf(unsigned char **frame, struct buf_st *buf)
 {
     int startCode;
@@ -28,77 +29,67 @@ static int getNALUFromBuf(unsigned char **frame, struct buf_st *buf)
     int frame_size;
     int bufoverflag = 1;
 
-    if (buf->pos >= buf->buf_size)
-    {
+    if(buf->pos >= buf->buf_size){
         buf->stat = WRITE;
         printf("h264buf empty\n");
         return -1;
     }
 
-    if (!startCode3(buf->buf + buf->pos) && !startCode4(buf->buf + buf->pos))
-    {
+    if(!startCode3(buf->buf + buf->pos) && !startCode4(buf->buf + buf->pos)){
         printf("statrcode err\n");
         return -1;
     }
 
-    if (startCode3(buf->buf + buf->pos))
-    {
+    if(startCode3(buf->buf + buf->pos)){
         startCode = 3;
     }
     else
         startCode = 4;
 
-    pstart = buf->buf + buf->pos; // pstart跳过之前已经读取的数据指向本次NALU的起始码
+    pstart = buf->buf + buf->pos;
 
-    tmp = pstart + startCode; // 指向NALU数据
+    tmp = pstart + startCode;
 
-    for (int i = 0; i < buf->buf_size - buf->pos - 3; i++) // pos表示起始码的位置，所以已经读取的数据长度也应该是pos个字节
-    {
-        if (startCode3(tmp) || startCode4(tmp)) // 此时tmp指向下一个起始码位置
-        {
-            frame_size = tmp - pstart; // 包含起始码的NALU长度
+    for(int i = 0; i < buf->buf_size - buf->pos - 3; i++){
+        if(startCode3(tmp) || startCode4(tmp)){
+            frame_size = tmp - pstart;
             bufoverflag = 0;
             break;
         }
         tmp++;
     }
-    if (bufoverflag == 1)
-    {
+    if(bufoverflag == 1){
         frame_size = buf->buf_size - buf->pos;
     }
 
     *frame = buf->buf + buf->pos;
 
     buf->pos += frame_size;
-    /*buf中的数据全部读取完毕，设置buf状态为WREIT*/
-    if (buf->pos >= buf->buf_size)
-    {
+    /*All data in buf has been read, set buf status to WREIT*/
+    if(buf->pos >= buf->buf_size){
         buf->stat = WRITE;
     }
     return frame_size;
 }
-/*从buf中解析NALU数据*/
+/*Analyze NALU data from buf*/
 void praseFrame(struct mediainfo_st *mp4info)
 {
-    if (mp4info == NULL)
-    {
+    if(mp4info == NULL){
         return;
     }
-    /*frame==READ,buffer==WRITE状态不可访问*/
-    if (mp4info->frame->stat == READ || mp4info->buffer->stat == WRITE)
-    {
+    /*Frame==READ, buffer==WRITE status inaccessible*/
+    if(mp4info->frame->stat == READ || mp4info->buffer->stat == WRITE){
         return;
     }
 
-    /*buf处于可读状态并且frame处于可写状态*/
+    /*Buf is in a readable state and frame is in a writable state*/
     mp4info->frame->frame_size = getNALUFromBuf(&mp4info->frame->frame, mp4info->buffer);
 
-    if (mp4info->frame->frame_size < 0)
-    {
+    if(mp4info->frame->frame_size < 0){
         return;
     }
 
-    if (startCode3(mp4info->frame->frame))
+    if(startCode3(mp4info->frame->frame))
         mp4info->frame->start_code = 3;
     else
         mp4info->frame->start_code = 4;
@@ -121,34 +112,29 @@ static void *parseMp4SendDataThd(void *arg)
     if (mp4info == NULL)
         pthread_exit(NULL);
     int64_t start_time = av_gettime();
-    while (mp4info->run_flag == 1)
-    {
+    while (mp4info->run_flag == 1){
         if (mp4info == NULL){
             pthread_exit(NULL);
         }
         findstream = 0;
-        while (av_read_frame(mp4info->context, &mp4info->av_pkt) >= 0)
-        {
+        while(av_read_frame(mp4info->context, &mp4info->av_pkt) >= 0){
             AVRational time_base = mp4info->context->streams[mp4info->av_pkt.stream_index]->time_base;
             AVRational time_base_q = {1, AV_TIME_BASE};
             mp4info->curtimestamp = av_rescale_q(mp4info->av_pkt.dts, time_base, time_base_q); // 微妙
             mp4info->now_stream_index = mp4info->av_pkt.stream_index;
-            if (mp4info->av_pkt.stream_index == mp4info->video_stream_index)
-            {
+            if(mp4info->av_pkt.stream_index == mp4info->video_stream_index){
                 findstream = 1;
                 break;
             }
-            if (mp4info->av_pkt.stream_index == mp4info->audio_stream_index)
-            {
+            if(mp4info->av_pkt.stream_index == mp4info->audio_stream_index){
                 findstream = 1;
                 mp4info->buffer_audio = mp4info->av_pkt.data;
                 mp4info->buffer_audio_size = mp4info->av_pkt.size;
                 break;
             }
         }
-        /*文件推流完毕*/
-        if (findstream == 0)
-        {
+        /*File streaming completed*/
+        if (findstream == 0){
             printf("thr_mp4:%s reloop\n", mp4info->filename);
             av_packet_unref(&mp4info->av_pkt);
             av_seek_frame(mp4info->context, -1, 0, AVSEEK_FLAG_BACKWARD);
@@ -176,11 +162,11 @@ static void *parseMp4SendDataThd(void *arg)
                 }
                 mp4info->buffer->buf = mp4info->av_pkt.data;
                 mp4info->buffer->buf_size = mp4info->av_pkt.size;
-                /*设置buf为READ状态*/
+                /*Set buf to READ state*/
                 mp4info->buffer->stat = READ;
                 while((mp4info->buffer->stat == READ) && (mp4info->run_flag == 1)){
-                    praseFrame(mp4info); // 如果buf处于可读状态就送去解析NALU
-                    mp4info->data_call_back(mp4info->arg); // 传递音视频
+                    praseFrame(mp4info); // If buf is in a readable state, send it to parse NALU
+                    mp4info->data_call_back(mp4info->arg);
                     mp4info->frame->stat = WRITE;
                 }
             }
@@ -216,10 +202,9 @@ void *creatMedia(char *path_filename, void *data_call_back, void *close_call_bac
     mp4->audio_type = AUDIO_NONE;
     mp4->context = avformat_alloc_context();
     int ret = avformat_open_input(&mp4->context, mp4->filename, NULL, NULL);
-    if (ret < 0)
-    {
+    if (ret < 0){
         char buf[1024];
-        av_strerror(ret, buf, 1024); // 查看报错内容
+        av_strerror(ret, buf, 1024);
         printf("avformat_open_input error %d,%s\n", ret, buf);
         if (mp4->filename != NULL)
             free(mp4->filename);
@@ -231,21 +216,18 @@ void *creatMedia(char *path_filename, void *data_call_back, void *close_call_bac
     avformat_find_stream_info(mp4->context, NULL);
     mp4->video_stream_index = av_find_best_stream(mp4->context, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     mp4->audio_stream_index = av_find_best_stream(mp4->context, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
-    if (mp4->video_stream_index >= 0)
-    {
+    if(mp4->video_stream_index >= 0){
         AVStream *as = mp4->context->streams[mp4->video_stream_index];
         mp4->fps = r2d(as->avg_frame_rate);
         AVCodecParameters *codecpar = as->codecpar;
-        if (codecpar->codec_id == AV_CODEC_ID_H264)
-        {
+        if(codecpar->codec_id == AV_CODEC_ID_H264){
             const AVBitStreamFilter *pfilter = av_bsf_get_by_name("h264_mp4toannexb");
             av_bsf_alloc(pfilter, &mp4->bsf_ctx);
             avcodec_parameters_copy(mp4->bsf_ctx->par_in, mp4->context->streams[mp4->video_stream_index]->codecpar);
             av_bsf_init(mp4->bsf_ctx);
             mp4->video_type = VIDEO_H264;
         }
-        else if (codecpar->codec_id == AV_CODEC_ID_H265 || codecpar->codec_id == AV_CODEC_ID_HEVC)
-        {
+        else if(codecpar->codec_id == AV_CODEC_ID_H265 || codecpar->codec_id == AV_CODEC_ID_HEVC){
             const AVBitStreamFilter *pfilter = av_bsf_get_by_name("hevc_mp4toannexb");
             av_bsf_alloc(pfilter, &mp4->bsf_ctx);
             avcodec_parameters_copy(mp4->bsf_ctx->par_in, mp4->context->streams[mp4->video_stream_index]->codecpar);
@@ -253,28 +235,25 @@ void *creatMedia(char *path_filename, void *data_call_back, void *close_call_bac
             mp4->video_type = VIDEO_H265;
         }
     }
-    if (mp4->audio_stream_index >= 0)
-    {
+    if(mp4->audio_stream_index >= 0){
         AVStream *as = mp4->context->streams[mp4->audio_stream_index];
         AVCodecParameters *codecpar = as->codecpar;
-        if (codecpar->codec_id == AV_CODEC_ID_AAC)
-        {
+        if(codecpar->codec_id == AV_CODEC_ID_AAC){
             mp4->audio_type = AUDIO_AAC;
         }
-        else if(codecpar->codec_id == AV_CODEC_ID_PCM_ALAW)
-        {
+        else if(codecpar->codec_id == AV_CODEC_ID_PCM_ALAW){
             mp4->audio_type = AUDIO_PCMA;
         }
     }
     
-    /*初始buffer*/
+    
     mp4->buffer = malloc(sizeof(struct buf_st));
     mp4->buffer->buf = NULL;
     mp4->buffer->buf_size = 0;
     mp4->buffer->pos = 0;
     mp4->buffer->stat = WRITE;
 
-    /*初始化frame*/
+    
     mp4->frame = malloc(sizeof(struct frame_st));
     mp4->frame->frame = NULL;
     mp4->frame->stat = WRITE;
@@ -351,8 +330,7 @@ int getVideoNALUWithoutStartCode(void *context, char **ptr, int *ptr_len){
 int getAudioWithoutADTS(void *context, char **ptr, int *ptr_len)
 {
     struct mediainfo_st *mp4 = (struct mediainfo_st *)context;
-    if (mp4 == NULL || mp4->now_stream_index == mp4->video_stream_index)
-    {
+    if(mp4 == NULL || mp4->now_stream_index == mp4->video_stream_index){
         return -1;
     }
     *ptr = mp4->buffer_audio;
@@ -369,22 +347,18 @@ void destroyMedia(void *context){
     avformat_close_input(&mp4->context);
     avformat_free_context(mp4->context);
     av_packet_free(&mp4->av_pkt);
-    if (mp4->bsf_ctx != NULL)
-    {
+    if(mp4->bsf_ctx != NULL){
         av_bsf_free(&mp4->bsf_ctx);
     }
-    if (mp4->filename != NULL)
-    {
+    if(mp4->filename != NULL){
         free(mp4->filename);
         mp4->filename = NULL;
     }
-    if (mp4->buffer != NULL)
-    {
+    if(mp4->buffer != NULL){
         free(mp4->buffer);
         mp4->buffer = NULL;
     }
-    if (mp4->frame != NULL)
-    {
+    if(mp4->frame != NULL){
         free(mp4->frame);
         mp4->frame = NULL;
     }
@@ -393,3 +367,4 @@ void destroyMedia(void *context){
     printf("destroyMedia\n");
     return ;
 }
+#endif

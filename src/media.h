@@ -1,6 +1,7 @@
 #ifndef _MEDIA_H_
 #define _MEDIA_H_
 #include "common.h"
+#ifdef RTSP_FILE_SERVER
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/log.h>
@@ -15,34 +16,22 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <pthread.h>
-enum VIDEO_e
-{
-    VIDEO_H264 = 1,
-    VIDEO_H265,
-    VIDEO_NONE,
-};
-enum AUDIO_e
-{
-    AUDIO_AAC = 1,
-    AUDIO_PCMA,
-    AUDIO_NONE,
-};
-/*buf和frame的状态*/
+/*The status of buf and frame*/
 enum BufFrame_e
 {
     READ = 1,
     WRITE,
-    OVER, // 文件读取完毕
+    OVER, //File read completed
 };
-/*MP4缓冲区*/
+/*MP4 buffer*/
 struct buf_st
 {
     unsigned char *buf;
     int buf_size;
-    int stat; // buf状态,READ表示可读 WRITE表示可写
-    int pos;  // frame读取buf的位置记录
+    int stat; // Buf status, READ stands for readable, WRITE stands for writable
+    int pos;  //Read the position record of buf from the frame
 };
-/*NALU数据读取*/
+/*NALU data reading*/
 struct frame_st
 {
     unsigned char *frame;
@@ -87,4 +76,5 @@ struct audioinfo_st getAudioInfo(void *context);
 int getVideoNALUWithoutStartCode(void *context, char **ptr, int *ptr_len);
 int getAudioWithoutADTS(void *context, char **ptr, int *ptr_len);
 void destroyMedia(void *context);
+#endif
 #endif

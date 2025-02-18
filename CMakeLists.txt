@@ -1,16 +1,35 @@
 cmake_minimum_required(VERSION 3.0)
 project (RTSPSERVER)
 
-include_directories(/usr/local/include ./ ./rtp ./3rdparty)
-aux_source_directory(./ SRC)
-aux_source_directory(./rtp RTP)
+include_directories(./src ./src/rtp ./3rdparty)
+aux_source_directory(./src SRC)
+aux_source_directory(./src/rtp RTP)
 aux_source_directory(./3rdparty 3RD)
+# If want to support file playback(rtsp file server), please open set(RTSP_FILE_SERVER FORCE)
+set(RTSP_FILE_SERVER FORCE)
+if(DEFINED  RTSP_FILE_SERVER)
+    message(STATUS "RTSP_FILE_SERVER OK")
+    add_definitions(-DRTSP_FILE_SERVER)
+    # for ffmpeg lib
+    include_directories(/usr/local/include)
+    link_directories(/usr/local/lib /usr/lib)
+endif()
 
-link_directories(/usr/local/lib /usr/lib)
 set(EXECUTABLE_OUTPUT_PATH ./)
 add_compile_options(-g)
 set(CMAKE_BUILD_TYPE Release)
 
-add_executable(rtsp_server ${SRC} ${RTP} ${3RD})
-target_link_libraries(rtsp_server pthread avutil avformat avcodec swscale swresample)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ./)
+add_library(rtsp_server SHARED ${SRC} ${RTP} ${3RD})
+target_link_libraries(rtsp_server pthread)
+if(DEFINED  RTSP_FILE_SERVER)
+    # rtsp file server, ffmpeg lib
+    target_link_libraries(rtsp_server avutil avformat avcodec swscale swresample)
+endif()
+
+add_executable(rtsp_server_file ./example/rtsp_server_file.c)
+target_link_libraries(rtsp_server_file rtsp_server)
+
+add_executable(rtsp_server_live ./example/rtsp_server_live.c)
+target_link_libraries(rtsp_server_live rtsp_server)
 
