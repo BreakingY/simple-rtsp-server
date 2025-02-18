@@ -1,6 +1,6 @@
 # simple-rtsp-server
 * RTSP1.0
-* H264/H265/AAC/PCMA(G711a)
+* H264/H265/AAC/PCMA(G711A)
 * 支持rtp over udp、rtp over tcp, 支持鉴权
 * epoll
 * 内置文件回放功能，把视频文件(MP4、MKV)放到指定文件夹下面，客户端通过"rtsp://ip:port/文件名"即可拉流
