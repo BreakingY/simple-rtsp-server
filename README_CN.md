@@ -10,7 +10,7 @@
 * 博客：https://sunkx.blog.csdn.net/article/details/139490411
   
 # 文件回放功能依赖ffmpeg
-* ffmpeg版本 >= 4.x，测试版本为4.0.5和4.4.5。
+* ffmpeg版本 >= 4.x，测试版本为4.0.5和4.4.5
 * 文件回放功能是可配置的，通过CMakeLists.txt中的"set(RTSP_FILE_SERVER FORCE)"实现开启和关闭文件回放功能(默认是打开的)，关闭文件回放功能，项目将不再依赖ffmpeg
 
 # 编译
