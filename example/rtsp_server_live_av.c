@@ -237,7 +237,7 @@ void *sendAudioDataThd(void *arg){
 }
 int main(int argc, char *argv[])
 {
-    if(argc < 3){
+    if(argc < 4){
         printf("./rtsp_server_live auth(0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)\n");
         return -1;
     }
