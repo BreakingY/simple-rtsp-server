@@ -105,7 +105,8 @@ typedef struct {
 int createTcpSocket();
 int createUdpSocket();
 int bindSocketAddr(int sockfd, const char *ip, int port);
-int acceptClient(int sockfd, char *ip, int *port);
+// return 0:timeout <0:error >0:client socket
+int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/);
 void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extension,
                    uint8_t padding, uint8_t version, uint8_t payloadType, uint8_t marker,
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc);

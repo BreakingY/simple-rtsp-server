@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/select.h>
 int createTcpSocket()
 {
     int sockfd;
@@ -51,7 +52,8 @@ int bindSocketAddr(int sockfd, const char *ip, int port)
         return -1;
     return 0;
 }
-int acceptClient(int sockfd, char *ip, int *port)
+#if 0
+int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/)
 {
     int clientfd;
     socklen_t len = 0;
@@ -68,6 +70,45 @@ int acceptClient(int sockfd, char *ip, int *port)
 
     return clientfd;
 }
+#else
+int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/)
+{
+    int clientfd;
+    socklen_t len = 0;
+    struct sockaddr_in addr;
+    fd_set read_fds;
+    struct timeval timeout_convert;
+    int ret;
+
+    memset(&addr, 0, sizeof(addr));
+    len = sizeof(addr);
+
+    timeout_convert.tv_sec = timeout / 1000;
+    timeout_convert.tv_usec = (timeout % 1000) * 1000;
+
+    FD_ZERO(&read_fds);
+    FD_SET(sockfd, &read_fds);
+
+    ret = select(sockfd + 1, &read_fds, NULL, NULL, &timeout_convert);
+    if (ret < 0) {
+        printf("select err: %s\n", strerror(errno));
+        return -1;
+    } else if (ret == 0) {
+        // printf("accept timeout\n");
+        return 0;
+    } else {
+        clientfd = accept(sockfd, (struct sockaddr *)&addr, &len);
+        if (clientfd < 0) {
+            printf("accept err: %s\n", strerror(errno));
+            return -1;
+        }
+        strcpy(ip, inet_ntoa(addr.sin_addr));
+        *port = ntohs(addr.sin_port);
+        return clientfd;
+    }
+    return -1;
+}
+#endif
 void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extension,
                    uint8_t padding, uint8_t version, uint8_t payloadType, uint8_t marker,
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc)

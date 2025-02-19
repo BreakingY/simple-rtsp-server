@@ -37,6 +37,7 @@ int main(int argc, char *argv[])
         printf("rtspStartServer error\n");
         return -1;
     }
+    rtspStopServer();
     rtspModuleDel();
 #else
     printf("RTSP_FILE SERVER not defined\n");

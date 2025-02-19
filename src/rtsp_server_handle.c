@@ -1,5 +1,6 @@
 #include "rtsp_server_handle.h"
 #include <unistd.h>
+static int rtsp_run_flag = 1;
 int rtspModuleInit(){
     return moduleInit();
 }
@@ -46,16 +47,16 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         printf("failed to listen\n");
         return -1;
     }
-    while(1){
+    while(rtsp_run_flag == 1){
         int client_sock_fd;
         char client_ip[40];
         int client_port;
         pthread_t tid;
 
-        client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port);
-        if(client_sock_fd < 0){
-            printf("failed to accept client\n");
-            return -1;
+        client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port, 20);
+        if(client_sock_fd <= 0){
+            // printf("failed to accept client or timeout\n");
+            continue;
         }
         printf("###########accept client --> client_sock_fd:%d client ip:%s,client port:%d###########\n", client_sock_fd, client_ip, client_port);
         struct thd_arg_st *arg;
@@ -77,12 +78,10 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
     close(server_sock_fd);
     return 0;
 }
-
-/*****session*****/
-/**
- * add video(live session)
- * @return 0:ok <0:error
- */
+void rtspStopServer(){
+    rtsp_run_flag = 0;
+    return;
+}
 int sessionAddVideo(void *context, enum VIDEO_e type){
     return addVideo(context, type);
 }

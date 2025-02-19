@@ -171,6 +171,7 @@ int main(int argc, char *argv[])
         printf("rtspStartServer error\n");
     }
     run_flag = 0;
+    rtspStopServer();
     rtspDelSession(context);
     rtspModuleDel();
     return 0;
