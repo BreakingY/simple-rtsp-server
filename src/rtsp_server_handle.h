@@ -16,7 +16,7 @@
  */
 int rtspModuleInit();
 /**
- * destroy, it can be called or not called. If called, it must be called at the end of the program
+ * destroy, will close all connected clients, it must be called at the end of the program
  */
 void rtspModuleDel();
 /**
@@ -41,6 +41,10 @@ void rtspDelSession(void *context);
  * @return 0:ok <0:error
  */
 int rtspStartServer(int auth, const char *server_ip, int server_port, const char *user, const char *password);
+/**
+ * stop rtsp server
+ */
+void rtspStopServer();
 
 /*****session*****/
 /**
