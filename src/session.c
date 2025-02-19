@@ -816,7 +816,11 @@ int addFileSession(char *path_filename,
         client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
         server_rtp_fd, server_rtcp_fd,server_rtp_fd_1, server_rtcp_fd_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
         );
-    eventAdd(EPOLLOUT|EPOLLERR|EPOLLRDHUP, &session_arr[pos]->clientinfo[0]);
+    int events = EPOLLERR|EPOLLRDHUP;
+#ifdef SEND_EPOLL
+    events |= EPOLLOUT;
+#endif
+    eventAdd(events, &session_arr[pos]->clientinfo[0]);
     pthread_mutex_unlock(&session_arr[pos]->mut);
     pthread_mutex_unlock(&mut_session);
     return 0;
@@ -1185,7 +1189,11 @@ int addClient(char* suffix,
                 client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
                 server_udp_socket_rtp, server_udp_socket_rtcp,server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
                 );
-            eventAdd(EPOLLOUT|EPOLLERR|EPOLLRDHUP, &session_arr[pos]->clientinfo[posofclient]);
+                int events = EPOLLERR|EPOLLRDHUP;
+#ifdef SEND_EPOLL
+                events |= EPOLLOUT;
+#endif
+            eventAdd(events, &session_arr[pos]->clientinfo[posofclient]);
             session_arr[pos]->count++;
 #ifdef SESSION_DEBUG
             printf("append client ok fd:%d\n", session_arr[pos]->clientinfo[posofclient].sd);
