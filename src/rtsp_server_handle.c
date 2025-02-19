@@ -53,7 +53,7 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         int client_port;
         pthread_t tid;
 
-        client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port, 20);
+        client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port, 2000);
         if(client_sock_fd <= 0){
             // printf("failed to accept client or timeout\n");
             continue;
