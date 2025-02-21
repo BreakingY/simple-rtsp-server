@@ -8,6 +8,7 @@
 * 注意视频不要包含B帧
 * MD5: https://github.com/talent518/md5
 * 博客：https://sunkx.blog.csdn.net/article/details/139490411
+* rtsp client: https://github.com/BreakingY/simple-rtsp-client
   
 # 文件回放功能依赖ffmpeg
 * ffmpeg版本 >= 4.x，测试版本为4.0.5和4.4.5
@@ -32,10 +33,10 @@
   * 鉴权：rtsp://admin:123456@ip:8554/live
 * eg: ./rtsp_server_live 1 ../mp4path/test.h264
 3. 自定义会话、媒体源(音频 + 视频，仅测试，未进行音视频同步)
-* ./rtsp_server_live auth(鉴权 0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)
+* ./rtsp_server_live_av auth(鉴权 0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)
   * 不加鉴权：rtsp://ip:8554/live
   * 鉴权：rtsp://admin:123456@ip:8554/live
-* eg: ./rtsp_server_live 1 ../mp4path/test.h264 ../mp4path/test.aac
+* eg: ./rtsp_server_live_av 1 ../mp4path/test.h264 ../mp4path/test.aac
 
 <img width="960" alt="ba2301fb0825b0bab489b9f474fc9cb" src="https://github.com/BreakingY/simple-rtsp-server/assets/99859929/24308b63-235a-4a75-adc7-67c43bde51dd">
 
