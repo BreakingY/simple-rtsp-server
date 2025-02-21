@@ -117,6 +117,7 @@ void free_authorization_info(AuthorizationInfo *auth_info);
 void generate_nonce(char *nonce, int length);
 int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response);
 
+int handleCmd_General(char *result, int cseq);
 int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce);
 int handleCmd_OPTIONS(char *result, int cseq);
 int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp);

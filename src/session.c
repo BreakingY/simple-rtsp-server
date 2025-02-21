@@ -68,7 +68,7 @@ static void eventAdd(int events, struct clientinfo_st *ev)
         epoll_data->fd = ev->sd;
         epoll_data->fd_type = FD_TYPE_TCP;
         epv.data.ptr = epoll_data;
-        epv.events = ev->events = events;
+        epv.events = ev->events = events | EPOLLIN; // client heartbeat(rtsp)
         if(epoll_ctl(epoll_fd, op, epoll_data->fd, &epv) < 0){
             printf("tcp event add failed [fd=%d]\n", epoll_data->fd);
         }
@@ -86,7 +86,7 @@ static void eventAdd(int events, struct clientinfo_st *ev)
         epoll_data->fd = ev->sd;
         epoll_data->fd_type = FD_TYPE_UDP_RTP;
         epv.data.ptr = epoll_data;
-        epv.events = ev->events = events;
+        epv.events = ev->events = events | EPOLLIN; // client heartbeat(rtsp)
         if (epoll_ctl(epoll_fd, op, epoll_data->fd, &epv) < 0){
             printf("tcp monitor event add failed [fd=%d]\n", epoll_data->fd);
         }
@@ -173,6 +173,10 @@ static void eventDel(struct clientinfo_st *ev)
 
 static void *epollLoop(void *arg)
 {
+    char buffer_recv[4096];
+    int recv_len = 0;
+    char buffer_send[4096];
+    int send_len = 0;
     while (run_flag == 1){
         struct epoll_event events[CLIENTMAX];
         pthread_mutex_lock(&mut_epoll);
@@ -193,6 +197,33 @@ static void *epollLoop(void *arg)
                 continue;
             }
             int close_flag = 0;
+            if((events[i].events & EPOLLIN) && (fd == clientinfo->sd)){
+                // handle client heartbeat(rtsp) or TEARDOWN
+                recv_len = recv(fd, buffer_recv, sizeof(buffer_recv), 0);
+                if(recv_len <= 0){
+                    close_flag = 1;
+                }
+                else{
+                    buffer_recv[recv_len] = '\0';
+                    int cseq = 0;
+                    char *buf_ptr = buffer_recv;
+                    char line[1024];
+                    /*CSeq*/
+                    while(1){
+                        buf_ptr = getLineFromBuf(buf_ptr, line);
+                        if(!strncmp(line, "CSeq:", strlen("CSeq:"))){
+                            if(sscanf(line, "CSeq: %d\r\n", &cseq) != 1){
+                                printf("parse err\n");
+                            }
+                            break;
+                        }
+                    }
+                    handleCmd_General(buffer_send, cseq);
+                    if(send(fd, buffer_send, strlen(buffer_send), 0) <= 0){
+                        close_flag = 1;
+                    }
+                }
+            }
             if((events[i].events & EPOLLERR) || (events[i].events & EPOLLRDHUP)){
                 close_flag = 1;
             }
@@ -1189,9 +1220,9 @@ int addClient(char* suffix,
                 client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
                 server_udp_socket_rtp, server_udp_socket_rtcp,server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
                 );
-                int events = EPOLLERR|EPOLLRDHUP;
+            int events = EPOLLERR|EPOLLRDHUP;
 #ifdef SEND_EPOLL
-                events |= EPOLLOUT;
+            events |= EPOLLOUT;
 #endif
             eventAdd(events, &session_arr[pos]->clientinfo[posofclient]);
             session_arr[pos]->count++;

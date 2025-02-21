@@ -300,7 +300,9 @@ void *doClientThd(void *arg)
         printf("---------------S->C--------------\n");
         printf("%s", send_buf);
 #endif
-        send(client_sock_fd, send_buf, strlen(send_buf), 0);
+        if(send(client_sock_fd, send_buf, strlen(send_buf), 0) <= 0){
+            goto out;
+        }
 
         if(!strcmp(method, "PLAY")){
             struct timeval time_pre, time_now;
