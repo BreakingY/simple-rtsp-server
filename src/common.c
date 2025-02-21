@@ -290,7 +290,13 @@ int authorization_verify(char *username, char *password, char *realm, char *nonc
     }
     return -1;
 }
-
+int handleCmd_General(char *result, int cseq){
+    sprintf(result, "RTSP/1.0 200 OK\r\n"
+        "CSeq: %d\r\n"
+        "\r\n",
+    cseq);
+    return 0;
+}
 int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce){
 	sprintf(result, "RTSP/1.0 401 Unauthorized\r\n"
 			        "CSeq: %d\r\n"
