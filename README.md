@@ -8,6 +8,7 @@
 * Can add custom RTSP sessions and add audio and video sources
 * Be careful not to include B-frames in the video
 * MD5: https://github.com/talent518/md5
+* rtsp client: https://github.com/BreakingY/simple-rtsp-client
   
 # The file playback function relies on ffmpeg
 * FFmpeg version>=4.x, test versions are 4.0.5 and 4.4.5
@@ -32,10 +33,10 @@
   * Authentication：rtsp://admin:123456@ip:8554/live
 * eg: ./rtsp_server_live 1 ../mp4path/test.h264
 3. Customize session and media sources(audio + video, only test, without audio and video synchronization)
-* ./rtsp_server_live auth(0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)
+* ./rtsp_server_live_av auth(0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)
   * Without authentication：rtsp://ip:8554/live
   * Authentication：rtsp://admin:123456@ip:8554/live
-* eg: ./rtsp_server_live 1 ../mp4path/test.h264 ../mp4path/test.aac
+* eg: ./rtsp_server_live_av 1 ../mp4path/test.h264 ../mp4path/test.aac
 
 <img width="960" alt="ba2301fb0825b0bab489b9f474fc9cb" src="https://github.com/BreakingY/simple-rtsp-server/assets/99859929/24308b63-235a-4a75-adc7-67c43bde51dd">
 
