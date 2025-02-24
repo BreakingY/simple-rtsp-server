@@ -1,6 +1,8 @@
+#include <sys/epoll.h>
+
 #include "session.h"
 #include "media.h"
-#include <sys/epoll.h>
+
 #define SESSION_DEBUG
 static char mp4Dir[1024];
 static int reloop_flag = 1;
@@ -198,29 +200,33 @@ static void *epollLoop(void *arg)
             }
             int close_flag = 0;
             if((events[i].events & EPOLLIN) && (fd == clientinfo->sd)){
-                // handle client heartbeat(rtsp) or TEARDOWN
-                recv_len = recv(fd, buffer_recv, sizeof(buffer_recv), 0);
+                // handle client heartbeat(rtsp) or TEARDOWN or RTCP(Just care about TCP's RTCP and UDP's direct dropout)
+                // TCP data must be processed, otherwise it will block the other end. UDP does not have this problem
+                recv_len = recvWithTimeout(fd, buffer_recv, sizeof(buffer_recv), 0);
                 if(recv_len <= 0){
                     close_flag = 1;
                 }
-                else{
+                else {
                     buffer_recv[recv_len] = '\0';
-                    int cseq = 0;
-                    char *buf_ptr = buffer_recv;
-                    char line[1024];
-                    /*CSeq*/
-                    while(1){
-                        buf_ptr = getLineFromBuf(buf_ptr, line);
-                        if(!strncmp(line, "CSeq:", strlen("CSeq:"))){
-                            if(sscanf(line, "CSeq: %d\r\n", &cseq) != 1){
-                                printf("parse err\n");
+                    // TODO check buffer
+                    if(buffer_recv[0] != '$'){
+                        int cseq = 0;
+                        char *buf_ptr = buffer_recv;
+                        char line[1024];
+                        /*CSeq*/
+                        while(1){
+                            buf_ptr = getLineFromBuf(buf_ptr, line);
+                            if(!strncmp(line, "CSeq:", strlen("CSeq:"))){
+                                if(sscanf(line, "CSeq: %d\r\n", &cseq) != 1){
+                                    printf("parse err\n");
+                                }
+                                break;
                             }
-                            break;
                         }
-                    }
-                    handleCmd_General(buffer_send, cseq);
-                    if(send(fd, buffer_send, strlen(buffer_send), 0) <= 0){
-                        close_flag = 1;
+                        handleCmd_General(buffer_send, cseq);
+                        if(sendWithTimeout(fd, (const char*)buffer_send, strlen(buffer_send), 0) <= 0){
+                            close_flag = 1;
+                        }
                     }
                 }
             }
@@ -308,14 +314,6 @@ static void *epollLoop(void *arg)
                                 break;
                         }
                     }
-                    // Judging whether the client is closed through TCP socket, UDP cannot determine
-                    // int flags = fcntl(clientinfo->sd, F_GETFL, 0);
-                    // fcntl(clientinfo->sd, F_SETFL, flags | O_NONBLOCK);
-                    // char buffer[1024];
-                    // if (recv(clientinfo->sd, buffer, sizeof(buffer), 0) == 0)
-                    // {
-                    //     ret = -1;
-                    // }
                 }
                 if(ret <= 0){
                     close_flag = 1;
@@ -499,23 +497,23 @@ int clearClient(struct clientinfo_st *clientinfo)
         return -1;
     }
     if(clientinfo->sd > 0){
-        close(clientinfo->sd);
+        closeSocket(clientinfo->sd);
         clientinfo->sd = -1;
     }
     if(clientinfo->udp_sd_rtp > 0){
-        close(clientinfo->udp_sd_rtp);
+        closeSocket(clientinfo->udp_sd_rtp);
         clientinfo->udp_sd_rtp = -1;
     }
     if(clientinfo->udp_sd_rtcp > 0){
-        close(clientinfo->udp_sd_rtcp);
+        closeSocket(clientinfo->udp_sd_rtcp);
         clientinfo->udp_sd_rtcp = -1;
     }
     if(clientinfo->udp_sd_rtp_1 > 0){
-        close(clientinfo->udp_sd_rtp_1);
+        closeSocket(clientinfo->udp_sd_rtp_1);
         clientinfo->udp_sd_rtp_1 = -1;
     }
     if(clientinfo->udp_sd_rtcp_1 > 0){
-        close(clientinfo->udp_sd_rtcp_1);
+        closeSocket(clientinfo->udp_sd_rtcp_1);
         clientinfo->udp_sd_rtcp_1 = -1;
     }
     memset(clientinfo->client_ip, 0, sizeof(clientinfo->client_ip));

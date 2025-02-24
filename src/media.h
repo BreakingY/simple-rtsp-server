@@ -1,21 +1,19 @@
 #ifndef _MEDIA_H_
 #define _MEDIA_H_
-#include "common.h"
 #ifdef RTSP_FILE_SERVER
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <signal.h>
+#include <pthread.h>
+
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/log.h>
 #include <libavutil/time.h>
-#include <netinet/in.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <signal.h>
-#include <pthread.h>
+
+#include "common.h"
 /*The status of buf and frame*/
 enum BufFrame_e
 {

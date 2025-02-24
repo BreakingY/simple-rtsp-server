@@ -1,11 +1,4 @@
-#include "aac_rtp.h"
-static uint32_t getTimestamp(uint32_t sample_rate)
-{
-    struct timeval tv = {0};
-    gettimeofday(&tv, NULL);
-    uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // clockRate/1000;
-    return ts;
-}
+#include "rtp.h"
 // char *aac_filename = "test_out.aac";
 // FILE *aac_fd = NULL;
 
@@ -24,23 +17,18 @@ int rtpSendAACFrame(int fd, struct rtp_tcp_header *tcp_header, struct RtpPacket 
     // fwrite(data, 1, size, aac_fd);
     int ret;
     int send_bytes = 0;
-    struct sockaddr_in addr;
     if(tcp_header != NULL && sig != -1){ // tcp
         tcp_header->magic = '$';
         tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)size + 4;
 
         tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
         tcp_header->channel = sig;
-        ret = send(fd, tcp_header, sizeof(struct rtp_tcp_header), 0);
+        ret = sendWithTimeout(fd, (const char*)tcp_header, sizeof(struct rtp_tcp_header), 0);
         if(ret <= 0){
             return -1;
         }
     }
     else if(client_ip != NULL && client_rtp_port != -1){ // udp
-
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(client_rtp_port);
-        addr.sin_addr.s_addr = inet_addr(client_ip);
     }
     else{
         printf("parameter error\n");
@@ -58,10 +46,10 @@ int rtpSendAACFrame(int fd, struct rtp_tcp_header *tcp_header, struct RtpPacket 
     rtp_packet->payload[3] = (size & 0x1F) << 3;   // low 5bits
     memcpy(rtp_packet->payload + 4, data, size);
     if(tcp_header != NULL && sig != -1){ // tcp
-        ret = send(fd, rtp_packet, RTP_HEADER_SIZE + size + 4, 0);
+        ret = sendWithTimeout(fd, (const char*)rtp_packet, RTP_HEADER_SIZE + size + 4, 0);
     }
     else if(client_ip != NULL && client_rtp_port != -1){ // udp
-        ret = sendto(fd, (void *)rtp_packet, RTP_HEADER_SIZE + size + 4, 0, (struct sockaddr *)&addr, sizeof(addr));
+        ret = sendUDP(fd, (const char*)rtp_packet, RTP_HEADER_SIZE + size + 4, client_ip, client_rtp_port);
     }
     if(ret <= 0){
         return -1;

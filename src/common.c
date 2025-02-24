@@ -1,114 +1,19 @@
-#include "common.h"
-#include "md5.h"
-#include <arpa/inet.h>
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include <sys/time.h>
+
 #ifdef RTSP_FILE_SERVER
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/log.h>
 #include <libavutil/time.h>
 #endif
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/select.h>
-int createTcpSocket()
-{
-    int sockfd;
-    int on = 1;
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-        return -1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
-    return sockfd;
-}
-int createUdpSocket()
-{
-    int sockfd;
-    int on = 1;
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0)
-        return -1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
-    return sockfd;
-}
-
-int bindSocketAddr(int sockfd, const char *ip, int port)
-{
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr(ip);
-    if (bind(sockfd, (struct sockaddr *)&addr, sizeof(struct sockaddr)) < 0)
-        return -1;
-    return 0;
-}
-#if 0
-int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/)
-{
-    int clientfd;
-    socklen_t len = 0;
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    len = sizeof(addr);
-    clientfd = accept(sockfd, (struct sockaddr *)&addr, &len);
-    if (clientfd < 0){
-        printf("accept err:%s\n", strerror(errno));
-        return -1;
-    }
-    strcpy(ip, inet_ntoa(addr.sin_addr));
-    *port = ntohs(addr.sin_port);
-
-    return clientfd;
-}
-#else
-int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/)
-{
-    int clientfd;
-    socklen_t len = 0;
-    struct sockaddr_in addr;
-    fd_set read_fds;
-    struct timeval timeout_convert;
-    int ret;
-
-    memset(&addr, 0, sizeof(addr));
-    len = sizeof(addr);
-
-    timeout_convert.tv_sec = timeout / 1000;
-    timeout_convert.tv_usec = (timeout % 1000) * 1000;
-
-    FD_ZERO(&read_fds);
-    FD_SET(sockfd, &read_fds);
-
-    ret = select(sockfd + 1, &read_fds, NULL, NULL, &timeout_convert);
-    if (ret < 0) {
-        printf("select err: %s\n", strerror(errno));
-        return -1;
-    } else if (ret == 0) {
-        // printf("accept timeout\n");
-        return 0;
-    } else {
-        clientfd = accept(sockfd, (struct sockaddr *)&addr, &len);
-        if (clientfd < 0) {
-            printf("accept err: %s\n", strerror(errno));
-            return -1;
-        }
-        strcpy(ip, inet_ntoa(addr.sin_addr));
-        *port = ntohs(addr.sin_port);
-        return clientfd;
-    }
-    return -1;
-}
-#endif
+#include "common.h"
+#include "md5.h"
 void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extension,
                    uint8_t padding, uint8_t version, uint8_t payloadType, uint8_t marker,
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc)
@@ -145,7 +50,7 @@ static char *extract_value(const char *source, const char *key) {
     if (!start) {
         return NULL;
     }
-    start += strlen(key) + 2; // 跳过 key="
+    start += strlen(key) + 2; // skip key="
 
     const char *end = strchr(start, '"');
     if (!end) {
@@ -219,7 +124,7 @@ static void generate_random_string(char *buf, int length) {
     }
     return;
 }
-void generate_nonce(char *nonce, int length) {
+void generate_nonce(char *nonce, int length){
     if (length < 1) {
         nonce[0] = '\0';
         return;
@@ -246,7 +151,16 @@ void generate_nonce(char *nonce, int length) {
     }
     return;
 }
-
+void generate_session_id(char *session_id, size_t size){
+    if (size < 9) {
+        return;
+    }
+    time_t timestamp = time(NULL);
+    srand((unsigned int)timestamp);
+    int random_part = rand() % 1000000;
+    snprintf(session_id, size, "%02ld%06d", timestamp % 100, random_part);
+    return;
+}
 int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response){
     // md5(username:realm:password)
     unsigned char res1[16];
@@ -654,4 +568,15 @@ void adts_header(char *adts_header_buffer, int data_len, int aactype, int freque
     adts_header_buffer[5] |= 0x1f;                                 //buffer fullness:0x7ff high 5bits
     adts_header_buffer[6] = 0xfc;
     return;
+}
+// t(rtsp/rtp时间戳，单位s) =  t(采集时间戳，单位秒)*音视频时钟频率 或者 t(rtsp/rtp时间戳，单位ms)=(t采集时间戳,单位ms)*(时钟频率/1000)
+// 时钟频率是1秒内的频率，比如视频时90000HZ,1ms的话就是90HZ
+// 这种计算方式和ts+=时钟频率/帧率(此时ts需要初始值，一般为0)计算出来的帧之间的时间戳增量是一样 ，但是用系统时间计算rtp的时间能够准确的反应当前帧的采集时间(rtsp/rtp时间基下的时间)
+// clockRate/1000是转换成ms
+uint32_t getTimestamp(uint32_t sample_rate)
+{
+    struct timeval tv = {0};
+    gettimeofday(&tv, NULL);
+    uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // clockRate/1000;
+    return ts;
 }

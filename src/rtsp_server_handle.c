@@ -1,5 +1,4 @@
 #include "rtsp_server_handle.h"
-#include <unistd.h>
 static int rtsp_run_flag = 1;
 int rtspModuleInit(){
     return moduleInit();
@@ -42,7 +41,7 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         return -1;
     }
 
-    ret = listen(server_sock_fd, 100);
+    ret = serverListen(server_sock_fd, 100);
     if(ret < 0){
         printf("failed to listen\n");
         return -1;
@@ -75,7 +74,7 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         }
         pthread_detach(tid);
     }
-    close(server_sock_fd);
+    closeSocket(server_sock_fd);
     return 0;
 }
 void rtspStopServer(){

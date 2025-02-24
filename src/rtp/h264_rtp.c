@@ -1,16 +1,4 @@
-#include "h264_rtp.h"
-
-static uint32_t getTimestamp()
-{
-    struct timeval tv = {0};
-    gettimeofday(&tv, NULL);
-    // t(rtsp/rtp时间戳，单位s) =  t(采集时间戳，单位秒)*音视频时钟频率 或者 t(rtsp/rtp时间戳，单位ms)=(t采集时间戳,单位ms)*(时钟频率/1000)
-    // 时钟频率是1秒内的频率，比如视频时90000HZ,1ms的话就是90HZ
-    // 这种计算方式和ts+=时钟频率/帧率(此时ts需要初始值，一般为0)计算出来的帧之间的时间戳增量是一样 ，但是用系统时间计算rtp的时间能够准确的反应当前帧的采集时间(rtsp/rtp时间基下的时间)
-    // clockRate/1000是转换成ms
-    uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * 90; // clockRate/1000;
-    return ts;
-}
+#include "rtp.h"
 int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, uint8_t *frame, uint32_t frame_size, int fps, int sig_0, char *client_ip, int client_rtp_port)
 {
     uint8_t nalu_type; // nalu第一个字节
@@ -24,16 +12,10 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
     if(frame == NULL){
         return -1;
     }
-    rtp_packet->rtpHeader.timestamp = getTimestamp();
+    rtp_packet->rtpHeader.timestamp = getTimestamp(90000);
     if(tcp_header != NULL){
         tcp_header->magic = '$';
         tcp_header->rtp_len16 = 0;
-    }
-    struct sockaddr_in addr;
-    if(client_rtp_port != -1 && client_ip != NULL){
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(client_rtp_port);
-        addr.sin_addr.s_addr = inet_addr(client_ip);
     }
     if(frame_size <= PTK_RTP_TCP_MAX){ // nalu长度小于最大包场：单一NALU单元模式
         /*
@@ -50,7 +32,7 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
             tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
             // 发送RTP_OVER_TCP头部
             tcp_header->channel = sig_0;
-            ret = send(sd, tcp_header, sizeof(struct rtp_tcp_header), 0);
+            ret = sendWithTimeout(sd, (const char*)tcp_header, sizeof(struct rtp_tcp_header), 0);
             if(ret <= 0){
                 return -1;
             }
@@ -63,10 +45,10 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
         memcpy(rtp_packet->payload, frame, frame_size);
 
         if(tcp_header != NULL && sig_0 != -1){ // rtp over tcp
-            ret = send(sd, rtp_packet, RTP_HEADER_SIZE + frame_size, 0);
+            ret = sendWithTimeout(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + frame_size, 0);
         }
         else if(client_rtp_port != -1 && client_ip != NULL){ // rtp over udp
-            ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + frame_size, 0, (struct sockaddr *)&addr, sizeof(addr));
+            ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + frame_size, client_ip, client_rtp_port);
         }
         else{
             printf("parameter error\n");
@@ -132,7 +114,7 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
                 tcp_header->rtp_len16 = (uint16_t)RTP_HEADER_SIZE + (uint16_t)PTK_RTP_TCP_MAX + 2; // 多两个字节的FUin和FUheader
                 tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
                 tcp_header->channel = sig_0;
-                ret = send(sd, tcp_header, sizeof(struct rtp_tcp_header), 0);
+                ret = sendWithTimeout(sd, (const char*)tcp_header, sizeof(struct rtp_tcp_header), 0);
                 if(ret <= 0){
                     return -1;
                 }
@@ -146,10 +128,10 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
 
             // 发送RTP数据包
             if(tcp_header != NULL && sig_0 != -1){
-                ret = send(sd, rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, 0);
+                ret = sendWithTimeout(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, 0);
             }
             else if(client_rtp_port != -1 && client_ip != NULL){
-                ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, 0, (struct sockaddr *)&addr, sizeof(addr));
+                ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, client_ip, client_rtp_port);
             }
             else{
                 printf("parameter error\n");
@@ -182,7 +164,7 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
                 tcp_header->rtp_len16 = htons(tcp_header->rtp_len16);
                 // 发送RTP_OVER_TCP头部
                 tcp_header->channel = sig_0;
-                ret = send(sd, tcp_header, sizeof(struct rtp_tcp_header), 0);
+                ret = sendWithTimeout(sd, (const char*)tcp_header, sizeof(struct rtp_tcp_header), 0);
                 if(ret <= 0){
                     return -1;
                 }
@@ -194,10 +176,10 @@ int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket
             memcpy(rtp_packet->payload + 2, frame + pos, remainPktSize);
 
             if(tcp_header != NULL && sig_0 != -1){
-                ret = send(sd, rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, 0);
+                ret = sendWithTimeout(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, 0);
             }
             else if(client_rtp_port != -1 && client_ip != NULL){
-                ret = sendto(sd, (void *)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, 0, (struct sockaddr *)&addr, sizeof(addr));
+                ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, client_ip, client_rtp_port);
             }
             else{
                 printf("parameter error\n");

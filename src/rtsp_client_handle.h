@@ -2,6 +2,7 @@
 #define _RTSP_CLIENT_HANDLE_H_
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 struct thd_arg_st
 {
     int client_sock_fd;

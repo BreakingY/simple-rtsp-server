@@ -1,63 +1,8 @@
 #include "rtsp_client_handle.h"
-#include "common.h"
+#include "socket_io.h"
 #include "session.h"
-#include <arpa/inet.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 #define BUF_MAX_SIZE (1024 * 1024)
 #define RTSP_DEBUG
-static int create_rtp_sockets(int *fd1, int *fd2, int *port1, int *port2)
-{
-    struct sockaddr_in addr;
-    int port = 0;
-
-    *fd1 = socket(AF_INET, SOCK_DGRAM, 0);
-    if(*fd1 < 0){
-        perror("socket");
-        return -1;
-    }
-
-    *fd2 = socket(AF_INET, SOCK_DGRAM, 0);
-    if (*fd2 < 0){
-        perror("socket");
-        close(*fd1);
-        return -1;
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    for (port = 1024; port <= 65535; port += 2){
-        addr.sin_port = htons(port);
-        if(bind(*fd1, (struct sockaddr *)&addr, sizeof(addr)) == 0){
-            addr.sin_port = htons(port + 1);
-            if(bind(*fd2, (struct sockaddr *)&addr, sizeof(addr)) == 0){
-                *port1 = port;
-                *port2 = port + 1;
-                return 0;
-            }
-            close(*fd1);
-        }
-    }
-    close(*fd1);
-    close(*fd2);
-    return -1;
-}
-static void generate_session_id(char *session_id, size_t size) {
-    if (size < 9) {
-        return;
-    }
-    time_t timestamp = time(NULL);
-    srand((unsigned int)timestamp);
-    int random_part = rand() % 1000000;
-    snprintf(session_id, size, "%02ld%06d", timestamp % 100, random_part);
-    return;
-}
 void *doClientThd(void *arg)
 {
     signal(SIGINT, sig_handler);
@@ -114,8 +59,7 @@ void *doClientThd(void *arg)
     generate_session_id(session_id, sizeof(session_id));
     while(1){
         int recv_len;
-
-        recv_len = recv(client_sock_fd, recv_buf, BUF_MAX_SIZE, 0);
+        recv_len = recvWithTimeout(client_sock_fd, recv_buf, BUF_MAX_SIZE, 0);
         if (recv_len <= 0)
             goto out;
 
@@ -154,7 +98,7 @@ void *doClientThd(void *arg)
                     printf("---------------S->C--------------\n");
                     printf("%s", send_buf);
 #endif
-                    send(client_sock_fd, send_buf, strlen(send_buf), 0);
+                    sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                     continue;
                 }
                 else{
@@ -227,7 +171,7 @@ void *doClientThd(void *arg)
             if(ret <= 0){ // The resource does not exist
                 printf("The resource does not exist\n");
                 handleCmd_404(send_buf, cseq);
-                send(client_sock_fd, send_buf, strlen(send_buf), 0);
+                sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                 goto out;
             }
             else{
@@ -245,7 +189,7 @@ void *doClientThd(void *arg)
                 if (ret <= 0){ // The resource does not exist
                     printf("The resource does not exist\n");
                     handleCmd_404(send_buf, cseq);
-                    send(client_sock_fd, send_buf, strlen(send_buf), 0);
+                    sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                     goto out;
                 }
                 findflag = 1;
@@ -256,7 +200,7 @@ void *doClientThd(void *arg)
             int ret = sessionGenerateSDP(suffix, localIp, sdp, sizeof(sdp));
             if(ret < 0){ // There is an issue with the mp4 file, or the video is not H264/H265, and the audio is not AAC/PCMA
                 handleCmd_500(send_buf, cseq);
-                send(client_sock_fd, send_buf, strlen(send_buf), 0);
+                sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                 goto out;
             }
             if(handleCmd_DESCRIBE(send_buf, cseq, url, sdp)){
@@ -300,7 +244,7 @@ void *doClientThd(void *arg)
         printf("---------------S->C--------------\n");
         printf("%s", send_buf);
 #endif
-        if(send(client_sock_fd, send_buf, strlen(send_buf), 0) <= 0){
+        if(sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0) <= 0){
             goto out;
         }
 
@@ -323,7 +267,7 @@ void *doClientThd(void *arg)
         }
     }
 out:
-    close(client_sock_fd);
+    closeSocket(client_sock_fd);
     free(arg);
     return NULL;
 over:

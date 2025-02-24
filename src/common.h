@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <arpa/inet.h>
 // #define RTSP_FILE_SERVER
 #define RTP_VESION              2
 
@@ -102,11 +101,6 @@ typedef struct {
     char *uri;
     char *response;
 } AuthorizationInfo;
-int createTcpSocket();
-int createUdpSocket();
-int bindSocketAddr(int sockfd, const char *ip, int port);
-// return 0:timeout <0:error >0:client socket
-int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/);
 void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extension,
                    uint8_t padding, uint8_t version, uint8_t payloadType, uint8_t marker,
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc);
@@ -115,6 +109,7 @@ char *getLineFromBuf(char *buf, char *line);
 AuthorizationInfo* find_authorization(const char *request);
 void free_authorization_info(AuthorizationInfo *auth_info);
 void generate_nonce(char *nonce, int length);
+void generate_session_id(char *session_id, size_t size);
 int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response);
 
 int handleCmd_General(char *result, int cseq);
@@ -133,5 +128,5 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len);
 #endif
 int generateSDPExt(char *localIp, char *buffer, int buffer_len, int video_type, int audio_type, int sample_rate, int profile, int channels);
 void adts_header(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels);
-
+uint32_t getTimestamp(uint32_t sample_rate);
 #endif

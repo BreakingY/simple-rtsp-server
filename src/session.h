@@ -1,22 +1,18 @@
 #ifndef _SESSION_H_
 #define _SESSION_H_
-#include "aac_rtp.h"
-#include "pcma_rtp.h"
-#include "common.h"
-#include "h264_rtp.h"
-#include "h265_rtp.h"
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <malloc.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <malloc.h>
+#include <stdint.h>
+
+#include <pthread.h>
+#include <signal.h>
+
+#include "common.h"
+#include "rtp.h"
+#include "socket_io.h"
+
 #define CLIENTMAX           1024
 #define FILEMAX             1024
 #define VIDEO_DATA_MAX_SIZE 2 * 1024 * 1024

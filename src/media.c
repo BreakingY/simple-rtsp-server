@@ -346,7 +346,7 @@ void destroyMedia(void *context){
     pthread_join(mp4->tid, NULL);
     avformat_close_input(&mp4->context);
     avformat_free_context(mp4->context);
-    av_packet_free(&mp4->av_pkt);
+    av_packet_unref(&mp4->av_pkt);
     if(mp4->bsf_ctx != NULL){
         av_bsf_free(&mp4->bsf_ctx);
     }
