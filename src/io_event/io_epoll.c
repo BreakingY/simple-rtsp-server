@@ -60,7 +60,7 @@ int delEvent(event_data_ptr_t *event_data){
     pthread_mutex_unlock(&mut_epoll);
     return 0;
 }
-void *EventLoop(void *arg){
+void *startEventLoop(void *arg){
     while (run_flag == 1){
         struct epoll_event events[EPOLL_MAX];
         pthread_mutex_lock(&mut_epoll);
@@ -101,7 +101,7 @@ void *EventLoop(void *arg){
     }
     return NULL;
 }
-void EventStop(){
+void stopEventLoop(){
     run_flag = 0;
     return;
 }

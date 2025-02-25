@@ -45,7 +45,7 @@ void setEventCallback(event_callback_t event_in, event_callback_t event_out, eve
 int closeEvent();
 int addEvent(int events, event_data_ptr_t *event_data);
 int delEvent(event_data_ptr_t *event_data);
-void *EventLoop(void *arg);
-void EventStop();
+void *startEventLoop(void *arg);
+void stopEventLoop();
 
 #endif

@@ -359,9 +359,9 @@ int moduleInit()
         return -1;
     }
     setEventCallback(handleClientTcpData, sendClientMedia, delClient);
-    int ret = pthread_create(&event_thd, NULL, EventLoop, NULL);
+    int ret = pthread_create(&event_thd, NULL, startEventLoop, NULL);
     if(ret < 0){
-        perror("EventLoop pthread_create()");
+        perror("startEventLoop pthread_create()");
         return -1;
     }
     pthread_detach(event_thd);
@@ -377,7 +377,7 @@ void moduleDel()
 #endif
     pthread_mutex_destroy(&mut_session);
     pthread_mutex_destroy(&mut_clientcount);
-    EventStop();
+    stopEventLoop();
     closeEvent();
     return;
 }
