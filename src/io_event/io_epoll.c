@@ -81,7 +81,7 @@ void *EventLoop(void *arg){
                     }
                 }
             }
-            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLRDHUP)){
+            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLRDHUP) || (events[i].events & EPOLLHUP)){
                 close_flag = 1;
             }
             else if ((events[i].events & EPOLLOUT)){

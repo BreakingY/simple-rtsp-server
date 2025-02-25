@@ -777,7 +777,7 @@ int addFileSession(char *path_filename,
         client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
         server_rtp_fd, server_rtcp_fd,server_rtp_fd_1, server_rtcp_fd_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
         );
-    int events = EVENT_ERR|EVENT_RDHUP;
+    int events = EVENT_ERR|EVENT_RDHUP|EVENT_HUP;
 #ifdef SEND_DATA_EVENT
     events |= EVENT_OUT;
 #endif
@@ -1150,7 +1150,7 @@ int addClient(char* suffix,
                 client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
                 server_udp_socket_rtp, server_udp_socket_rtcp,server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
                 );
-            int events = EVENT_ERR|EVENT_RDHUP;
+            int events = EVENT_ERR|EVENT_RDHUP|EVENT_HUP;
 #ifdef SEND_DATA_EVENT
             events |= EVENT_OUT;
 #endif
