@@ -1,14 +1,12 @@
-#include <sys/epoll.h>
-
 #include "session.h"
 #include "media.h"
+#include "rtsp_message.h"
+#include "io_epoll.h"
 
 #define SESSION_DEBUG
 static char mp4Dir[1024];
 static int reloop_flag = 1;
-static int epoll_fd;
-static pthread_t epoll_thd;
-static int run_flag = 1;
+static pthread_t event_thd;
 
 static struct session_st *session_arr[FILEMAX]; // Session array, dynamically add and delete
 static pthread_mutex_t mut_session = PTHREAD_MUTEX_INITIALIZER;
@@ -20,340 +18,271 @@ static pthread_mutex_t mut_session = PTHREAD_MUTEX_INITIALIZER;
 
 static int sum_client = 0; // Record how many clients are currently connecting to the server in total
 static pthread_mutex_t mut_clientcount = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mut_epoll = PTHREAD_MUTEX_INITIALIZER;
-/*
- * mut_clientcount and mut_epoll do not use it together with the three locks mentioned in the comments above
- */
-typedef enum
-{
-    FD_TYPE_TCP,
-    FD_TYPE_UDP_RTP,  // video
-    FD_TYPE_UDP_RTP_1 // audio
-} fd_type_t;
-typedef struct
-{
-    struct clientinfo_st *client_info;
-    fd_type_t fd_type;
-    int fd;
-} epoll_data_ptr_t;
-static int createEpoll()
-{
-    epoll_fd = epoll_create(1024);
-    if (epoll_fd < 0)
-    {
-        printf("create efd in %s err %s\n", __func__, strerror(errno));
-        exit(1);
-    }
-    return 0;
-}
-static int closeEpoll()
-{
-    if(epoll_fd >= 0){
-        close(epoll_fd);
-    }
-    return 0;
-}
-/* Add a file descriptor to the red black tree that epoll listens to */
-static void eventAdd(int events, struct clientinfo_st *ev)
-{
+static int eventAdd(int events, struct clientinfo_st *ev){
     if (ev->sd < 0)
-        return;
-    pthread_mutex_lock(&mut_epoll);
-
-    int op = EPOLL_CTL_ADD;
-
+        return -1;
     // media
     if(ev->transport == RTP_OVER_TCP){
-        struct epoll_event epv = {0, {0}};
-        epoll_data_ptr_t *epoll_data = (epoll_data_ptr_t *)malloc(sizeof(epoll_data_ptr_t));
-        epoll_data->client_info = ev;
-        epoll_data->fd = ev->sd;
-        epoll_data->fd_type = FD_TYPE_TCP;
-        epv.data.ptr = epoll_data;
-        epv.events = ev->events = events | EPOLLIN; // client heartbeat(rtsp)
-        if(epoll_ctl(epoll_fd, op, epoll_data->fd, &epv) < 0){
-            printf("tcp event add failed [fd=%d]\n", epoll_data->fd);
-        }
-        else{
-#ifdef SESSION_DEBUG
-            printf("tcp event add OK [fd=%d]\n", epoll_data->fd);
-#endif
+        event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+        event_data->user_data = (void *)ev;
+        event_data->fd = ev->sd;
+        event_data->fd_type = FD_TYPE_TCP;
+        ev->events = events | EVENT_IN; // client heartbeat(rtsp)
+        if(addEvent(ev->events, event_data) < 0){
+            return -1;
         }
     }
     else{
         // Monitor client TCP connections and handle client shutdown events
-        struct epoll_event epv = {0, {0}};
-        epoll_data_ptr_t *epoll_data = (epoll_data_ptr_t *)malloc(sizeof(epoll_data_ptr_t));
-        epoll_data->client_info = ev;
-        epoll_data->fd = ev->sd;
-        epoll_data->fd_type = FD_TYPE_UDP_RTP;
-        epv.data.ptr = epoll_data;
-        epv.events = ev->events = events | EPOLLIN; // client heartbeat(rtsp)
-        if (epoll_ctl(epoll_fd, op, epoll_data->fd, &epv) < 0){
-            printf("tcp monitor event add failed [fd=%d]\n", epoll_data->fd);
-        }
-        else{
-#ifdef SESSION_DEBUG
-            printf("tcp monitor event add OK [fd=%d]\n", epoll_data->fd);
-#endif
+        event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+        event_data->user_data = (void *)ev;
+        event_data->fd = ev->sd;
+        event_data->fd_type = FD_TYPE_UDP_RTP;
+        ev->events = events | EVENT_IN; // client heartbeat(rtsp)
+        if(addEvent(ev->events, event_data) < 0){
+            return -1;
         }
 
         if (ev->udp_sd_rtp != -1){ // video
-            struct epoll_event epv = {0, {0}};
-            epoll_data_ptr_t *epoll_data = (epoll_data_ptr_t *)malloc(sizeof(epoll_data_ptr_t));
-            epoll_data->client_info = ev;
-            epoll_data->fd = ev->udp_sd_rtp;
-            epoll_data->fd_type = FD_TYPE_UDP_RTP;
-            epv.data.ptr = epoll_data;
-            epv.events = ev->events = events;
-            if(epoll_ctl(epoll_fd, op, epoll_data->fd, &epv) < 0){
-                printf("udp event add failed [fd=%d]\n", epoll_data->fd);
-            }
-            else{
-#ifdef SESSION_DEBUG
-                printf("udp event add OK [fd=%d]\n", epoll_data->fd);
-#endif
+            event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+            event_data->user_data = (void *)ev;
+            event_data->fd = ev->udp_sd_rtp;
+            event_data->fd_type = FD_TYPE_UDP_RTP;
+            ev->events = events;
+            if(addEvent(ev->events, event_data) < 0){
+                return -1;
             }
         }
         if(ev->udp_sd_rtp_1 != -1){ // audio
-            struct epoll_event epv = {0, {0}};
-            epoll_data_ptr_t *epoll_data = (epoll_data_ptr_t *)malloc(sizeof(epoll_data_ptr_t));
-            epoll_data->client_info = ev;
-            epoll_data->fd = ev->udp_sd_rtp_1;
-            epoll_data->fd_type = FD_TYPE_UDP_RTP;
-            epv.data.ptr = epoll_data;
-            epv.events = ev->events = events;
-            if(epoll_ctl(epoll_fd, op, epoll_data->fd, &epv) < 0){
-                printf("udp event add failed [fd=%d]\n", epoll_data->fd);
-            }
-            else{
-#ifdef SESSION_DEBUG
-                printf("udp event add OK [fd=%d]\n", epoll_data->fd);
-#endif
+            event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+            event_data->user_data = (void *)ev;
+            event_data->fd = ev->udp_sd_rtp_1;
+            event_data->fd_type = FD_TYPE_UDP_RTP;
+            ev->events = events;
+            if(addEvent(ev->events, event_data) < 0){
+                return -1;
             }
         }
     }
-    pthread_mutex_unlock(&mut_epoll);
-    return;
+    return 0;
 }
-/* Delete a file descriptor from the red black tree monitored by epoll*/
-static void eventDel(struct clientinfo_st *ev)
-{
-    if (ev->sd < 0)
-        return;
-    pthread_mutex_lock(&mut_epoll);
-    struct epoll_event epv = {0, {0}};
-    epv.data.ptr = NULL;
-    if(ev->transport == RTP_OVER_TCP){
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, ev->sd, &epv);
-#ifdef SESSION_DEBUG
-        printf("tcp event del OK [fd=%d]\n", ev->sd);
-#endif
+// handle client heartbeat(rtsp) or TEARDOWN or RTCP(Just care about TCP's RTCP and UDP's direct dropout)
+// TCP data must be processed, otherwise it will block the other end. UDP does not have this problem
+static int handleClientTcpData(event_data_ptr_t *event_data){
+    struct clientinfo_st *clientinfo = (struct clientinfo_st *)event_data->user_data;
+    int type = event_data->fd_type;
+    int fd = event_data->fd;
+    if(clientinfo == NULL){
+        return -1;
     }
-    else{
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, ev->sd, &epv);
-#ifdef SESSION_DEBUG
-        printf("tcp monitor event del OK [fd=%d]\n", ev->sd);
-#endif
-
-        if(ev->udp_sd_rtp != -1){
-            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, ev->udp_sd_rtp, &epv);
-#ifdef SESSION_DEBUG
-            printf("udp event del OK [fd=%d]\n", ev->udp_sd_rtp);
-#endif   
-        }
-        if(ev->udp_sd_rtp_1 != -1){
-            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, ev->udp_sd_rtp_1, &epv);
-#ifdef SESSION_DEBUG
-            printf("udp event del OK [fd=%d]\n", ev->udp_sd_rtp_1);
-#endif
-        }
+    if(fd != clientinfo->sd){
+        return -1;
     }
-    pthread_mutex_unlock(&mut_epoll);
-    return;
-}
-
-static void *epollLoop(void *arg)
-{
-    char buffer_recv[4096];
-    int recv_len = 0;
     char buffer_send[4096];
-    int send_len = 0;
-    while (run_flag == 1){
-        struct epoll_event events[CLIENTMAX];
-        pthread_mutex_lock(&mut_epoll);
-        int timeout = 10; // ms
-        int nfd = epoll_wait(epoll_fd, events, CLIENTMAX, timeout);
-        pthread_mutex_unlock(&mut_epoll);
-        if(nfd < 0){
-            printf("epoll_wait error, exit\n");
-            exit(-1);
-        }
-
-        for(int i = 0; i < nfd; i++){
-            epoll_data_ptr_t *epoll_data = (epoll_data_ptr_t *)events[i].data.ptr;
-            struct clientinfo_st *clientinfo = epoll_data->client_info;
-            int type = epoll_data->fd_type;
-            int fd = epoll_data->fd;
-            if(clientinfo == NULL){
-                continue;
-            }
-            int close_flag = 0;
-            if((events[i].events & EPOLLIN) && (fd == clientinfo->sd)){
-                // handle client heartbeat(rtsp) or TEARDOWN or RTCP(Just care about TCP's RTCP and UDP's direct dropout)
-                // TCP data must be processed, otherwise it will block the other end. UDP does not have this problem
-                recv_len = recvWithTimeout(fd, buffer_recv, sizeof(buffer_recv), 0);
-                if(recv_len <= 0){
-                    close_flag = 1;
-                }
-                else {
-                    buffer_recv[recv_len] = '\0';
-                    // TODO check buffer
-                    if(buffer_recv[0] != '$'){
-                        int cseq = 0;
-                        char *buf_ptr = buffer_recv;
-                        char line[1024];
-                        /*CSeq*/
-                        while(1){
-                            buf_ptr = getLineFromBuf(buf_ptr, line);
-                            if(!strncmp(line, "CSeq:", strlen("CSeq:"))){
-                                if(sscanf(line, "CSeq: %d\r\n", &cseq) != 1){
-                                    printf("parse err\n");
-                                }
-                                break;
-                            }
-                        }
-                        handleCmd_General(buffer_send, cseq);
-                        if(sendWithTimeout(fd, (const char*)buffer_send, strlen(buffer_send), 0) <= 0){
-                            close_flag = 1;
-                        }
-                    }
-                }
-            }
-            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLRDHUP)){
-                close_flag = 1;
-            }
-            else if ((events[i].events & EPOLLOUT) && (clientinfo->events & EPOLLOUT)){
-                // Retrieve data from the circular queue and send it
-                pthread_mutex_lock(&clientinfo->session->mut); // Reading the client info in the session, locking is required
-                pthread_mutex_lock(&clientinfo->mut_list);
-                struct MediaPacket_st node;
-                node.size = 0;
-                if(fd == clientinfo->sd && ((clientinfo->sig_0 != -1) || (clientinfo->sig_2 != -1)) && (type == FD_TYPE_TCP)){ // rtp over tcp
-                    // Extract a frame of audio or video
-                    node = getFrameFromList1(clientinfo);
-                }
-                else if(fd == clientinfo->udp_sd_rtp && type == FD_TYPE_UDP_RTP){ // video
-                    // Extract a frame of video
-                    node = getFrameFromList1(clientinfo);
-                }
-                else if(fd == clientinfo->udp_sd_rtp_1 && type == FD_TYPE_UDP_RTP){ // audio
-                    // Extract a frame of audio
-                    node = getFrameFromList2(clientinfo);
-                }
-                pthread_mutex_unlock(&clientinfo->mut_list);
-                pthread_mutex_unlock(&clientinfo->session->mut);
-                if (node.size == 0){ // No data to send
-                    continue;
-                }
-                enum VIDEO_e video_type = getSessionVideoType(clientinfo->session);
-                int sample_rate;
-                int channels;
-                int profile;
-                int ret;
-                ret = getSessionAudioInfo(clientinfo->session, &sample_rate, &channels, &profile);
-                enum AUDIO_e audio_type = getSessionAudioType(clientinfo->session);
-                if (fd == clientinfo->sd){ // rtp over tcp
-                    if(node.type == VIDEO){
-                        switch(video_type){
-                            case VIDEO_H264:
-                                ret = rtpSendH264Frame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet, node.data, node.size, 0, clientinfo->sig_0, NULL, -1);
-                                break;
-                            case VIDEO_H265:
-                                ret = rtpSendH265Frame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet, node.data, node.size, 0, clientinfo->sig_0, NULL, -1);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    else{
-                        switch(audio_type){
-                            case AUDIO_AAC:
-                                ret = rtpSendAACFrame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, clientinfo->sig_2, NULL, -1);
-                                break;
-                            case AUDIO_PCMA:
-                                ret = rtpSendPCMAFrame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, clientinfo->sig_2, NULL, -1);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                }
-                else{ // rtp over udp
-                    if(node.type == VIDEO){
-                        switch(video_type){
-                            case VIDEO_H264:
-                                ret = rtpSendH264Frame(clientinfo->udp_sd_rtp, NULL, clientinfo->rtp_packet, node.data, node.size, 0, -1, clientinfo->client_ip, clientinfo->client_rtp_port);
-                                break;
-                            case VIDEO_H265:
-                                ret = rtpSendH265Frame(clientinfo->udp_sd_rtp, NULL, clientinfo->rtp_packet, node.data, node.size, 0, -1, clientinfo->client_ip, clientinfo->client_rtp_port);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    else{
-                        switch(audio_type){
-                            case AUDIO_AAC:
-                                ret = rtpSendAACFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
-                                break;
-                            case AUDIO_PCMA:
-                                ret = rtpSendPCMAFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                }
-                if(ret <= 0){
-                    close_flag = 1;
-                }
-            }
-            if(close_flag == 1){
-                /*Remove and free up space from epoll*/
-                eventDel(clientinfo);
-                if(epoll_data){
-                    free(epoll_data);
-                }
-#ifdef SESSION_DEBUG
-                printf("client:%d offline\n", clientinfo->sd);
-#endif
-                struct session_st *session = clientinfo->session;
-                int count = 0;
-                pthread_mutex_lock(&clientinfo->session->mut);
-                clearClient(clientinfo);
-                session->count--;
-                count = session->count;
-                pthread_mutex_unlock(&clientinfo->session->mut);
-                /*Change the total number of customer connections*/
-                pthread_mutex_lock(&mut_clientcount);
-                sum_client--;
-#ifdef SESSION_DEBUG
-                printf("sum_client:%d\n", sum_client);
-#endif
-                pthread_mutex_unlock(&mut_clientcount);
-                if(count == 0){
-                    if(clientinfo->session->is_custom == 0){
-#ifdef RTSP_FILE_SERVER
-                        delFileSession(session_arr[clientinfo->session->pos]);
-#endif
-                    }
-                }
-            }
-        }
-        usleep(1000 * 10); // 10ms
+    int recv_len = recvWithTimeout(clientinfo->sd, clientinfo->buffer + clientinfo->pos, sizeof(clientinfo->buffer) - clientinfo->pos, 0);
+    if(recv_len <= 0){
+        return -1;
     }
-    return NULL;
+    clientinfo->len += recv_len;
+    clientinfo->pos = clientinfo->len;
+    clientinfo->buffer[clientinfo->len] = 0;
+    if(clientinfo->buffer[0] == '$'){ // RTCP
+        int rtcp_len = 0;
+        if(clientinfo->len >= 4){
+            rtcp_len = (clientinfo->buffer[2] << 8) | clientinfo->buffer[3];
+        }
+        if((clientinfo->len - 4) >= rtcp_len){
+            // skip rtcp data
+            clientinfo->len -= rtcp_len/*RTCP*/ + 4/*rtp tcp header*/;
+            memmove(clientinfo->buffer, clientinfo->buffer + rtcp_len + 4, clientinfo->len);
+            clientinfo->pos = clientinfo->len;
+        }
+    }
+    else{ // MESSAGE
+        struct rtsp_request_message_st request_message;
+        memset(&request_message, 0, sizeof(struct rtsp_request_message_st));
+        int parse_used = parseRtspRequest(clientinfo->buffer, clientinfo->len, &request_message);
+        if(parse_used < 0){
+            return -1;
+        }
+        char *CSeq = findValueByKey(&request_message, "CSeq");
+        char *Session = findValueByKey(&request_message, "Session");
+        if(CSeq != NULL){
+            int cseq = atoi(CSeq);
+            handleCmd_General(buffer_send, cseq, Session);
+            if(sendWithTimeout(clientinfo->sd, (const char*)buffer_send, strlen(buffer_send), 0) <= 0){
+                return -1;
+            }
+            int i;
+            int cnt = clientinfo->len;
+            for(i = 0; i < cnt; i++){ // skip RTSP MESSAGE
+                if(clientinfo->buffer[i] == '$'){
+                    break;
+                }
+                clientinfo->len--;
+            }
+            memmove(clientinfo->buffer, clientinfo->buffer + i, clientinfo->len);
+        }
+        clientinfo->pos = clientinfo->len;
+    }
+    return 0;
+}
+static int sendClientMedia(event_data_ptr_t *event_data){
+    struct clientinfo_st *clientinfo = (struct clientinfo_st *)event_data->user_data;
+    int type = event_data->fd_type;
+    int fd = event_data->fd;
+    if(clientinfo == NULL){
+        return -1;
+    }
+    // Retrieve data from the circular queue and send it
+    pthread_mutex_lock(&clientinfo->session->mut); // Reading the client info in the session, locking is required
+    pthread_mutex_lock(&clientinfo->mut_list);
+    struct MediaPacket_st node;
+    node.size = 0;
+    if(fd == clientinfo->sd && ((clientinfo->sig_0 != -1) || (clientinfo->sig_2 != -1)) && (type == FD_TYPE_TCP)){ // rtp over tcp
+        // Extract a frame of audio or video
+        node = getFrameFromList1(clientinfo);
+    }
+    else if(fd == clientinfo->udp_sd_rtp && type == FD_TYPE_UDP_RTP){ // video
+        // Extract a frame of video
+        node = getFrameFromList1(clientinfo);
+    }
+    else if(fd == clientinfo->udp_sd_rtp_1 && type == FD_TYPE_UDP_RTP){ // audio
+        // Extract a frame of audio
+        node = getFrameFromList2(clientinfo);
+    }
+    pthread_mutex_unlock(&clientinfo->mut_list);
+    pthread_mutex_unlock(&clientinfo->session->mut);
+    if (node.size == 0){ // No data to send
+        return 0;
+    }
+    enum VIDEO_e video_type = getSessionVideoType(clientinfo->session);
+    int sample_rate;
+    int channels;
+    int profile;
+    int ret;
+    ret = getSessionAudioInfo(clientinfo->session, &sample_rate, &channels, &profile);
+    enum AUDIO_e audio_type = getSessionAudioType(clientinfo->session);
+    if (fd == clientinfo->sd){ // rtp over tcp
+        if(node.type == VIDEO){
+            switch(video_type){
+                case VIDEO_H264:
+                    ret = rtpSendH264Frame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet, node.data, node.size, 0, clientinfo->sig_0, NULL, -1);
+                    break;
+                case VIDEO_H265:
+                    ret = rtpSendH265Frame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet, node.data, node.size, 0, clientinfo->sig_0, NULL, -1);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else{
+            switch(audio_type){
+                case AUDIO_AAC:
+                    ret = rtpSendAACFrame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, clientinfo->sig_2, NULL, -1);
+                    break;
+                case AUDIO_PCMA:
+                    ret = rtpSendPCMAFrame(clientinfo->sd, clientinfo->tcp_header, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, clientinfo->sig_2, NULL, -1);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    else{ // rtp over udp
+        if(node.type == VIDEO){
+            switch(video_type){
+                case VIDEO_H264:
+                    ret = rtpSendH264Frame(clientinfo->udp_sd_rtp, NULL, clientinfo->rtp_packet, node.data, node.size, 0, -1, clientinfo->client_ip, clientinfo->client_rtp_port);
+                    break;
+                case VIDEO_H265:
+                    ret = rtpSendH265Frame(clientinfo->udp_sd_rtp, NULL, clientinfo->rtp_packet, node.data, node.size, 0, -1, clientinfo->client_ip, clientinfo->client_rtp_port);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else{
+            switch(audio_type){
+                case AUDIO_AAC:
+                    ret = rtpSendAACFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
+                    break;
+                case AUDIO_PCMA:
+                    ret = rtpSendPCMAFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, node.data, node.size, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    if(ret <= 0){
+        return -1;
+    }
+    return 0;
+}
+static int eventDel(struct clientinfo_st *ev)
+{
+    if(ev->sd < 0)
+        return -1;
+    event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+    event_data->user_data = (void *)ev;
+    event_data->fd = ev->sd;
+    if(delEvent(event_data) < 0){
+        return -1;
+    }
+    if(ev->udp_sd_rtp != -1){
+        event_data->fd = ev->udp_sd_rtp;
+        if(delEvent(event_data) < 0){
+            return -1;
+        }
+    }
+    if(ev->udp_sd_rtp_1 != -1){
+        event_data->fd = ev->udp_sd_rtp_1;
+        if(delEvent(event_data) < 0){
+            return -1;
+        }
+    }
+    free(event_data);
+    return 0;
+}
+static int delClient(event_data_ptr_t *event_data){
+    struct clientinfo_st *clientinfo = (struct clientinfo_st *)event_data->user_data;
+    int type = event_data->fd_type;
+    int fd = event_data->fd;
+    if(clientinfo == NULL || clientinfo->sd < 0){
+        return -1;
+    }
+    if(eventDel(clientinfo) < 0){ // Delete all listening sockets(TCP/UDP)
+        return -1;
+    }
+    if(event_data){
+        free(event_data);
+    }
+#ifdef SESSION_DEBUG
+    printf("client:%d offline\n", clientinfo->sd);
+#endif
+    struct session_st *session = clientinfo->session;
+    int count = 0;
+    pthread_mutex_lock(&clientinfo->session->mut);
+    clearClient(clientinfo);
+    session->count--;
+    count = session->count;
+    pthread_mutex_unlock(&clientinfo->session->mut);
+    /*Change the total number of customer connections*/
+    pthread_mutex_lock(&mut_clientcount);
+    sum_client--;
+#ifdef SESSION_DEBUG
+    printf("sum_client:%d\n", sum_client);
+#endif
+    pthread_mutex_unlock(&mut_clientcount);
+    if(count == 0){
+        if(clientinfo->session->is_custom == 0){
+#ifdef RTSP_FILE_SERVER
+            delFileSession(session_arr[clientinfo->session->pos]);
+#endif
+        }
+    }
+    return 0;
 }
 #ifdef RTSP_FILE_SERVER
 /*Audio and video queue operation*/
@@ -426,13 +355,16 @@ void sig_handler(int s)
 int moduleInit()
 {
     memset(session_arr, 0, sizeof(struct session_st *));
-    createEpoll();
-    int ret = pthread_create(&epoll_thd, NULL, epollLoop, NULL);
-    if(ret < 0){
-        perror("epollLoop pthread_create()");
+    if(createEvent() < 0){
         return -1;
     }
-    pthread_detach(epoll_thd);
+    setEventCallback(handleClientTcpData, sendClientMedia, delClient);
+    int ret = pthread_create(&event_thd, NULL, EventLoop, NULL);
+    if(ret < 0){
+        perror("EventLoop pthread_create()");
+        return -1;
+    }
+    pthread_detach(event_thd);
     return 0;
 }
 
@@ -445,8 +377,8 @@ void moduleDel()
 #endif
     pthread_mutex_destroy(&mut_session);
     pthread_mutex_destroy(&mut_clientcount);
-    run_flag = 0;
-    closeEpoll();
+    EventStop();
+    closeEvent();
     return;
 }
 int initClient(struct session_st *session, struct clientinfo_st *clientinfo)
@@ -760,7 +692,7 @@ static void mediaCallBack(void *arg){
     pthread_mutex_lock(&session->mut);
     for(int i = 0; i < CLIENTMAX; i++){
         if(session->clientinfo[i].sd != -1 && session->clientinfo[i].send_call_back != NULL && session->clientinfo[i].playflag == 1){
-#ifdef SEND_EPOLL
+#ifdef SEND_DATA_EVENT
             session->clientinfo[i].send_call_back(&session->clientinfo[i]);
 #else
             // Directly sending audio and video data to the client, not applicable to epoll
@@ -845,9 +777,9 @@ int addFileSession(char *path_filename,
         client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
         server_rtp_fd, server_rtcp_fd,server_rtp_fd_1, server_rtcp_fd_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
         );
-    int events = EPOLLERR|EPOLLRDHUP;
-#ifdef SEND_EPOLL
-    events |= EPOLLOUT;
+    int events = EVENT_ERR|EVENT_RDHUP;
+#ifdef SEND_DATA_EVENT
+    events |= EVENT_OUT;
 #endif
     eventAdd(events, &session_arr[pos]->clientinfo[0]);
     pthread_mutex_unlock(&session_arr[pos]->mut);
@@ -987,7 +919,7 @@ int sendVideoData(void *context, uint8_t *data, int data_len){
     for (int i = 0; i < CLIENTMAX; i++){
         if (session->clientinfo[i].sd != -1 && session->clientinfo[i].playflag == 1){
             struct clientinfo_st *clientinfo = &session->clientinfo[i];
-#ifdef SEND_EPOLL
+#ifdef SEND_DATA_EVENT
             pthread_mutex_lock(&clientinfo->mut_list);
             if(clientinfo->packet_num >= RING_BUFFER_MAX){
                 printf("WARING ring buffer too large\n");
@@ -1029,7 +961,7 @@ int sendAudioData(void *context, uint8_t *data, int data_len){
     for (int i = 0; i < CLIENTMAX; i++){
         if (session->clientinfo[i].sd != -1 && session->clientinfo[i].playflag == 1){
             struct clientinfo_st *clientinfo = &session->clientinfo[i];
-#ifdef SEND_EPOLL
+#ifdef SEND_DATA_EVENT
             pthread_mutex_lock(&clientinfo->mut_list);
             if(clientinfo->packet_num >= RING_BUFFER_MAX){
                 printf("WARING ring buffer too large\n");
@@ -1218,9 +1150,9 @@ int addClient(char* suffix,
                 client_sock_fd, sig_0, sig_2, ture_of_tcp, /*tcp*/
                 server_udp_socket_rtp, server_udp_socket_rtcp,server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1 /*udp*/
                 );
-            int events = EPOLLERR|EPOLLRDHUP;
-#ifdef SEND_EPOLL
-            events |= EPOLLOUT;
+            int events = EVENT_ERR|EVENT_RDHUP;
+#ifdef SEND_DATA_EVENT
+            events |= EVENT_OUT;
 #endif
             eventAdd(events, &session_arr[pos]->clientinfo[posofclient]);
             session_arr[pos]->count++;

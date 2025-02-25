@@ -16,8 +16,7 @@
 #include "md5.h"
 void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extension,
                    uint8_t padding, uint8_t version, uint8_t payloadType, uint8_t marker,
-                   uint16_t seq, uint32_t timestamp, uint32_t ssrc)
-{
+                   uint16_t seq, uint32_t timestamp, uint32_t ssrc){
     rtpPacket->rtpHeader.csrcLen = csrcLen;
     rtpPacket->rtpHeader.extension = extension;
     rtpPacket->rtpHeader.padding = padding;
@@ -30,22 +29,23 @@ void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extensi
     return;
 }
 
-char *getLineFromBuf(char *buf, char *line)
-{
-    while(*buf != '\n'){
+char *getLineFromBuf(char *buf, int len, char *line){
+    while(len > 0){
         *line = *buf;
         line++;
         buf++;
+        len--;
+        if(*buf == '\n'){
+            *line = *buf;
+            ++line;
+            *line = '\0';
+            buf++;
+            break;
+        }
     }
-
-    *line = '\n';
-    ++line;
-    *line = '\0';
-
-    ++buf;
     return buf;
 }
-static char *extract_value(const char *source, const char *key) {
+static char *extract_value(const char *source, const char *key){
     const char *start = strstr(source, key);
     if (!start) {
         return NULL;
@@ -68,7 +68,7 @@ static char *extract_value(const char *source, const char *key) {
     return value;
 }
 
-AuthorizationInfo *find_authorization(const char *request) {
+AuthorizationInfo *find_authorization(const char *request){
     const char *auth_start = strstr(request, "Authorization: ");
     if (!auth_start) {
         return NULL;
@@ -105,8 +105,22 @@ AuthorizationInfo *find_authorization(const char *request) {
     free(auth_value);
     return auth_info;
 }
-
-void free_authorization_info(AuthorizationInfo *auth_info) {
+AuthorizationInfo* find_authorization_by_value(const char *auth_value){
+    if(auth_value == NULL){
+        return NULL;
+    }
+    AuthorizationInfo *auth_info = (AuthorizationInfo *)malloc(sizeof(AuthorizationInfo));
+    if (!auth_info) {
+        return NULL;
+    }
+    auth_info->username = extract_value(auth_value, "username");
+    auth_info->realm = extract_value(auth_value, "realm");
+    auth_info->nonce = extract_value(auth_value, "nonce");
+    auth_info->uri = extract_value(auth_value, "uri");
+    auth_info->response = extract_value(auth_value, "response");
+    return auth_info;
+}
+void free_authorization_info(AuthorizationInfo *auth_info){
     if (auth_info) {
         free(auth_info->username);
         free(auth_info->realm);
@@ -117,7 +131,7 @@ void free_authorization_info(AuthorizationInfo *auth_info) {
     }
     return;
 }
-static void generate_random_string(char *buf, int length) {
+static void generate_random_string(char *buf, int length){
     static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     for (size_t i = 0; i < length; i++) {
         buf[i] = charset[rand() % (sizeof(charset) - 1)];
@@ -203,109 +217,6 @@ int authorization_verify(char *username, char *password, char *realm, char *nonc
         return 0;
     }
     return -1;
-}
-int handleCmd_General(char *result, int cseq){
-    sprintf(result, "RTSP/1.0 200 OK\r\n"
-        "CSeq: %d\r\n"
-        "\r\n",
-    cseq);
-    return 0;
-}
-int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce){
-	sprintf(result, "RTSP/1.0 401 Unauthorized\r\n"
-			        "CSeq: %d\r\n"
-			        "WWW-Authenticate: Digest realm=\"%s\", nonce=\"%s\"\r\n"
-			        "\r\n",
-                cseq,
-                realm,
-                nonce);
-
-	return 0;
-}
-int handleCmd_OPTIONS(char *result, int cseq)
-{
-    sprintf(result, "RTSP/1.0 200 OK\r\n"
-                    "CSeq: %d\r\n"
-                    "Public: OPTIONS, DESCRIBE, SETUP, PLAY\r\n"
-                    "\r\n",
-            cseq);
-
-    return 0;
-}
-int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp)
-{
-    sprintf(result, "RTSP/1.0 200 OK\r\nCSeq: %d\r\n"
-                    "Content-Base: %s\r\n"
-                    "Content-type: application/sdp\r\n"
-                    "Content-length: %d\r\n\r\n"
-                    "%s",
-            cseq,
-            url,
-            (int)strlen(sdp),
-            sdp);
-
-    return 0;
-}
-int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientIp, int sig_0, char *session)
-{
-    sprintf(result, "RTSP/1.0 200 OK\r\n"
-                    "CSeq: %d\r\n"
-                    "Transport: RTP/AVP/TCP;unicast;destination=%s;source=%s;interleaved=%d-%d\r\n"
-                    "Session: %s\r\n"
-                    "\r\n",
-            cseq,
-            clientIp,
-            localIp,
-            sig_0,
-            sig_0 + 1,
-            session);
-
-    return 0;
-}
-int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort, char *session)
-{
-    sprintf(result, "RTSP/1.0 200 OK\r\n"
-                    "CSeq: %d\r\n"
-                    "Transport: RTP/AVP;unicast;client_port=%d-%d;server_port=%d-%d\r\n"
-                    "Session: %s\r\n"
-                    "\r\n",
-            cseq,
-            clientRtpPort,
-            clientRtpPort + 1,
-            serverRtpPort,
-            serverRtpPort + 1,
-            session);
-
-    return 0;
-}
-int handleCmd_PLAY(char *result, int cseq, char *url_setup, char *session)
-{
-    sprintf(result, "RTSP/1.0 200 OK\r\n"
-                    "CSeq: %d\r\n"
-                    "Range: npt=0.000-\r\n"
-                    "Session: %s; timeout=60\r\n\r\n",
-            cseq,
-            session);
-
-    return 0;
-}
-int handleCmd_404(char *result, int cseq)
-{
-    sprintf(result, "RTSP/1.0 404 NOT FOUND\r\n"
-                    "CSeq: %d\r\n"
-                    "\r\n",
-            cseq);
-
-    return 0;
-}
-int handleCmd_500(char *result, int cseq)
-{
-    sprintf(result, "RTSP/1.0 500 SERVER ERROR\r\n"
-                    "CSeq: %d\r\n"
-                    "\r\n",
-            cseq);
-
-    return 0;
 }
 /*
 #define FF_PROFILE_AAC_MAIN 0
@@ -569,12 +480,9 @@ void adts_header(char *adts_header_buffer, int data_len, int aactype, int freque
     adts_header_buffer[6] = 0xfc;
     return;
 }
-// t(rtsp/rtp时间戳，单位s) =  t(采集时间戳，单位秒)*音视频时钟频率 或者 t(rtsp/rtp时间戳，单位ms)=(t采集时间戳,单位ms)*(时钟频率/1000)
-// 时钟频率是1秒内的频率，比如视频时90000HZ,1ms的话就是90HZ
-// 这种计算方式和ts+=时钟频率/帧率(此时ts需要初始值，一般为0)计算出来的帧之间的时间戳增量是一样 ，但是用系统时间计算rtp的时间能够准确的反应当前帧的采集时间(rtsp/rtp时间基下的时间)
-// clockRate/1000是转换成ms
-uint32_t getTimestamp(uint32_t sample_rate)
-{
+// t (rtsp/rtp timestamp, in seconds)=t (collection timestamp, in seconds) * audio and video clock frequency 
+// or t (rtsp/rtp timestamp, in milliseconds)=(collection timestamp, in milliseconds) * (clock frequency/1000)
+uint32_t getTimestamp(uint32_t sample_rate){
     struct timeval tv = {0};
     gettimeofday(&tv, NULL);
     uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // clockRate/1000;

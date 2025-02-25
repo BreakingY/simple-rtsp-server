@@ -17,7 +17,7 @@
 #define FILEMAX             1024
 #define VIDEO_DATA_MAX_SIZE 2 * 1024 * 1024
 #define RING_BUFFER_MAX     32
-// #define SEND_EPOLL // If using epoll to send audio and video, the memory grows rapidly and needs to be fixed
+// #define SEND_DATA_EVENT // If using event to send audio and video, the memory grows rapidly and needs to be fixed
 enum TRANSPORT_e
 {
     RTP_OVER_TCP = 1,
@@ -79,6 +79,11 @@ struct clientinfo_st
     int pos_list_1;
     int packet_num_1;
     int pos_last_packet_1;
+
+    // RTCP, RTSP MESSAGE(heartbeat or TEARDOWN)
+    char buffer[1024];
+    int len;
+    int pos;
 };
 /*rtsp session*/
 struct session_st

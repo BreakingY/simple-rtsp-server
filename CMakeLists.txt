@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.0)
 project (RTSPSERVER)
 
-include_directories(./src ./src/rtp ./3rdparty)
+include_directories(./src ./src/rtp ./src/io_event ./3rdparty)
 aux_source_directory(./src SRC)
 aux_source_directory(./src/rtp RTP)
+aux_source_directory(./src/io_event IO_EVENT)
 aux_source_directory(./3rdparty 3RD)
 # If want to support file playback(rtsp file server), please open set(RTSP_FILE_SERVER FORCE)
 set(RTSP_FILE_SERVER FORCE)
@@ -20,7 +21,7 @@ add_compile_options(-g)
 set(CMAKE_BUILD_TYPE Release)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ./)
-add_library(rtsp_server SHARED ${SRC} ${RTP} ${3RD})
+add_library(rtsp_server SHARED ${SRC} ${RTP} ${IO_EVENT} ${3RD})
 target_link_libraries(rtsp_server pthread)
 if(DEFINED  RTSP_FILE_SERVER)
     # rtsp file server, ffmpeg lib

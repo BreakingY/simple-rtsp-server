@@ -104,23 +104,15 @@ typedef struct {
 void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extension,
                    uint8_t padding, uint8_t version, uint8_t payloadType, uint8_t marker,
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc);
-char *getLineFromBuf(char *buf, char *line);
+char *getLineFromBuf(char *buf, int len, char *line);
 
 AuthorizationInfo* find_authorization(const char *request);
+AuthorizationInfo* find_authorization_by_value(const char *auth_value);
 void free_authorization_info(AuthorizationInfo *auth_info);
 void generate_nonce(char *nonce, int length);
 void generate_session_id(char *session_id, size_t size);
 int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response);
 
-int handleCmd_General(char *result, int cseq);
-int handleCmd_Unauthorized(char *result, int cseq, char *realm, char *nonce);
-int handleCmd_OPTIONS(char *result, int cseq);
-int handleCmd_DESCRIBE(char *result, int cseq, char *url, char *sdp);
-int handleCmd_SETUP_TCP(char *result, int cseq, char *localIp, char *clientip, int sig_0, char *session);
-int handleCmd_SETUP_UDP(char *result, int cseq, int clientRtpPort, int serverRtpPort, char *session);
-int handleCmd_PLAY(char *result, int cseq, char *url, char *session);
-int handleCmd_404(char *result, int cseq);
-int handleCmd_500(char *result, int cseq);
 #ifdef RTSP_FILE_SERVER
 int check_media_info(const char *filename, MediaInfo *info);
 void free_media_info(MediaInfo *info);

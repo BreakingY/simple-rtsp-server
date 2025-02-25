@@ -1,6 +1,7 @@
 #include "rtsp_client_handle.h"
 #include "socket_io.h"
 #include "session.h"
+#include "rtsp_message.h"
 #define BUF_MAX_SIZE (1024 * 1024)
 #define RTSP_DEBUG
 void *doClientThd(void *arg)
@@ -9,25 +10,17 @@ void *doClientThd(void *arg)
     signal(SIGQUIT, sig_handler);
     signal(SIGKILL, sig_handler);
     struct thd_arg_st *arg_thd = (struct thd_arg_st *)arg;
-
     int client_sock_fd = arg_thd->client_sock_fd;
     char *client_ip = arg_thd->client_ip;
     int client_port = arg_thd->client_port;
-    char method[40];
-    char url[100];
-    char url_tmp[100];
-    char suffix[100];
-    char url_setup[100];
-    char track[1024];
-    char url_play[1024];
-    char local_ip[40];
-    char version[40];
-    int cseq;
-    char *buf_ptr;
-    char *buf_tmp;
-    char recv_buf[BUF_MAX_SIZE];
-    char send_buf[BUF_MAX_SIZE];
-    char line[400];
+    char suffix[100] = {0};
+    char url_setup[100] = {0};
+    char track[1024] = {0};
+    char url_play[1024] = {0};
+    char local_ip[40] = {0};
+    int cseq = 0;
+    char recv_buf[BUF_MAX_SIZE] = {0};
+    char send_buf[BUF_MAX_SIZE] = {0};
     // rtp_over_tcp
     int sig_0 = -1;
     int sig_1 = -1;
@@ -51,165 +44,144 @@ void *doClientThd(void *arg)
     char ch = '/';
     int findflag = 0;
 
-    int ret;
     char *realm = "simple-rtsp-server";
     char nonce[33] = {0};
+    char session_id[512] = {0};
+
+    int used_bytes = 0;
+    int pos = 0;
+    int total_len = 0;
+    int ret = 0;
     generate_nonce(nonce, sizeof(nonce));
-    char session_id[512];
     generate_session_id(session_id, sizeof(session_id));
     while(1){
-        int recv_len;
-        recv_len = recvWithTimeout(client_sock_fd, recv_buf, BUF_MAX_SIZE, 0);
+        int recv_len = recvWithTimeout(client_sock_fd, recv_buf + pos, BUF_MAX_SIZE - pos, 0);
         if (recv_len <= 0)
             goto out;
-
-        recv_buf[recv_len] = '\0';
+        total_len += recv_len;
+        recv_buf[total_len] = '\0';
 #ifdef RTSP_DEBUG
         printf("---------------C->S--------------\n");
         printf("%s", recv_buf);
 #endif
-
-        buf_ptr = getLineFromBuf(recv_buf, line);
-        buf_tmp = buf_ptr;
-
-        if(sscanf(line, "%s %s %s\r\n", method, url, version) != 3){
-            printf("parse err\n");
+        struct rtsp_request_message_st request_message;
+        memset(&request_message, 0, sizeof(struct rtsp_request_message_st));
+        int parse_used = parseRtspRequest(recv_buf, total_len, &request_message);
+        if(parse_used < 0){
             goto out;
         }
-
-        /*CSeq*/
-        while(1){
-            buf_ptr = getLineFromBuf(buf_ptr, line);
-            if(!strncmp(line, "CSeq:", strlen("CSeq:"))){
-                if(sscanf(line, "CSeq: %d\r\n", &cseq) != 1){
-                    printf("parse err\n");
-                    goto out;
-                }
-                break;
-            }
+        used_bytes += parse_used;
+        // dumpRequestMessage(&request_message);
+        char *CSeq = findValueByKey(&request_message, "CSeq");
+        if(CSeq == NULL){
+            used_bytes -= parse_used;
+            goto need_more_data;
         }
+        cseq = atoi(CSeq);
         if(arg_thd->auth == 1){
             // authorization
-            if(!strcmp(method, "SETUP") || !strcmp(method, "DESCRIBE") || !strcmp(method, "PLAY")){
-                AuthorizationInfo *auth_info = find_authorization(recv_buf);
-                if(auth_info == NULL){
+            if(!strcmp(request_message.method, "SETUP") || !strcmp(request_message.method, "DESCRIBE") || !strcmp(request_message.method, "PLAY")){
+                char *Authorization = findValueByKey(&request_message, "Authorization");
+                if(Authorization == NULL){
                     handleCmd_Unauthorized(send_buf, cseq, realm, nonce);
-#ifdef RTSP_DEBUG
-                    printf("---------------S->C--------------\n");
-                    printf("%s", send_buf);
-#endif
-                    sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
-                    continue;
+                    goto need_more_data;
                 }
                 else{
+                    AuthorizationInfo *auth_info = find_authorization_by_value((const char *)Authorization);
                     // printf("nonce:%s\n", auth_info->nonce);
                     // printf("realm:%s\n", auth_info->realm);
                     // printf("response:%s\n", auth_info->response);
                     // printf("uri:%s\n", auth_info->uri);
                     // printf("username:%s\n", auth_info->username);
-                    int ret = authorization_verify(arg_thd->user_name, arg_thd->password, realm, nonce, auth_info->uri, method, auth_info->response);
+                    ret = authorization_verify(arg_thd->user_name, arg_thd->password, realm, nonce, auth_info->uri, request_message.method, auth_info->response);
                     free_authorization_info(auth_info);
                     if(ret < 0){
+                        handleCmd_Unauthorized(send_buf, cseq, realm, nonce);
                         goto out;
                     }
                 }
             }
         }
-
         /* SETUP:RTP_OVER_TCP or RTP_OVER_UDP */
-        if(!strcmp(method, "SETUP")){
+        if(!strcmp(request_message.method, "SETUP")){
             memset(url_setup, 0, sizeof(url_setup));
             memset(track, 0, sizeof(track));
-            strcpy(url_setup, url);
+            strcpy(url_setup, request_message.url);
             char *p = strrchr(url_setup, ch);
             memcpy(track, p + 1, strlen(p)); // video-track0 audio -track1
-            while(1){
-                buf_tmp = getLineFromBuf(buf_tmp, line);
+            char *Transport = findValueByKey(&request_message, "Transport");
+            if(Transport == NULL){
+                used_bytes -= parse_used;
+                goto need_more_data;
+            }
 
-                if (!buf_tmp){
-                    break;
+            if(!strncmp(Transport, "RTP/AVP/TCP", strlen("RTP/AVP/TCP"))){
+
+                if(memcmp(track, "track0", 6) == 0){
+                    sscanf(Transport, "RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n", &sig_0, &sig_1);
                 }
-
-                if(!strncmp(line, "Transport: RTP/AVP/TCP", strlen("Transport: RTP/AVP/TCP"))){
-
-                    if(memcmp(track, "track0", 6) == 0){
-                        sscanf(line, "Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n", &sig_0, &sig_1);
-                    }
-                    else{
-                        sscanf(line, "Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n", &sig_2, &sig_3);
-                    }
-
-                    ture_of_rtp_tcp = 1;
-                    break;
+                else{
+                    sscanf(Transport, "RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n", &sig_2, &sig_3);
                 }
-                if(!strncmp(line, "Transport: RTP/AVP/UDP", strlen("Transport: RTP/AVP/UDP"))){
-                    if(memcmp(track, "track0", 6) == 0){
-                        sscanf(line, "Transport: RTP/AVP/UDP;unicast;client_port=%d-%d\r\n", &client_rtp_port, &client_rtcp_port);
-                    }
-                    else{
-                        sscanf(line, "Transport: RTP/AVP/UDP;unicast;client_port=%d-%d\r\n", &client_rtp_port_1, &client_rtcp_port_1);
-                    }
-                    break;
+                ture_of_rtp_tcp = 1;
+            }
+            else if(!strncmp(Transport, "RTP/AVP/UDP", strlen("RTP/AVP/UDP"))){
+                if(memcmp(track, "track0", 6) == 0){
+                    sscanf(Transport, "RTP/AVP/UDP;unicast;client_port=%d-%d\r\n", &client_rtp_port, &client_rtcp_port);
                 }
-                if(!strncmp(line, "Transport: RTP/AVP", strlen("Transport: RTP/AVP"))){
-
-                    if(memcmp(track, "track0", 6) == 0){
-                        sscanf(line, "Transport: RTP/AVP;unicast;client_port=%d-%d\r\n", &client_rtp_port, &client_rtcp_port);
-                    }
-                    else{
-                        sscanf(line, "Transport: RTP/AVP;unicast;client_port=%d-%d\r\n", &client_rtp_port_1, &client_rtcp_port_1);
-                    }
-                    break;
+                else{
+                    sscanf(Transport, "RTP/AVP/UDP;unicast;client_port=%d-%d\r\n", &client_rtp_port_1, &client_rtcp_port_1);
                 }
             }
+            else if(!strncmp(Transport, "RTP/AVP", strlen("RTP/AVP"))){
+
+                if(memcmp(track, "track0", 6) == 0){
+                    sscanf(Transport, "RTP/AVP;unicast;client_port=%d-%d\r\n", &client_rtp_port, &client_rtcp_port);
+                }
+                else{
+                    sscanf(Transport, "RTP/AVP;unicast;client_port=%d-%d\r\n", &client_rtp_port_1, &client_rtcp_port_1);
+                }
+            }
+        
         }
-        if(!strcmp(method, "OPTIONS")){
-            char *p = strchr(url + strlen("rtsp://"), ch);
+        if(!strcmp(request_message.method, "OPTIONS")){
+            char *p = strchr(request_message.url + strlen("rtsp://"), ch);
             memcpy(suffix, p + 1, strlen(p));
             ret = sessionIsExist(suffix);
             findflag = 1;
             if(ret <= 0){ // The resource does not exist
                 printf("The resource does not exist\n");
                 handleCmd_404(send_buf, cseq);
-                sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                 goto out;
             }
             else{
-                if(handleCmd_OPTIONS(send_buf, cseq)){
-                    printf("failed to handle options\n");
-                    goto out;
-                }
+                handleCmd_OPTIONS(send_buf, cseq);
             }
         }
-        else if(!strcmp(method, "DESCRIBE")){
+        else if(!strcmp(request_message.method, "DESCRIBE")){
             if(findflag == 0){
-                char *p = strchr(url + strlen("rtsp://"), ch);
+                char *p = strchr(request_message.url + strlen("rtsp://"), ch);
                 memcpy(suffix, p + 1, strlen(p));
                 ret = sessionIsExist(suffix);
                 if (ret <= 0){ // The resource does not exist
                     printf("The resource does not exist\n");
                     handleCmd_404(send_buf, cseq);
-                    sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                     goto out;
                 }
                 findflag = 1;
             }
             char sdp[1024];
             char localIp[100];
-            sscanf(url, "rtsp://%[^:]:", localIp);
-            int ret = sessionGenerateSDP(suffix, localIp, sdp, sizeof(sdp));
-            if(ret < 0){ // There is an issue with the mp4 file, or the video is not H264/H265, and the audio is not AAC/PCMA
+            sscanf(request_message.url, "rtsp://%[^:]:", localIp);
+            ret = sessionGenerateSDP(suffix, localIp, sdp, sizeof(sdp));
+            if(ret < 0){
                 handleCmd_500(send_buf, cseq);
-                sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
                 goto out;
             }
-            if(handleCmd_DESCRIBE(send_buf, cseq, url, sdp)){
-                printf("failed to handle describe\n");
-                goto out;
-            }
+            handleCmd_DESCRIBE(send_buf, cseq, request_message.url, sdp);
         }
-        else if(!strcmp(method, "SETUP") && ture_of_rtp_tcp == 0){ // RTP_OVER_UDP
-            sscanf(url, "rtsp://%[^:]:", local_ip);
+        else if(!strcmp(request_message.method, "SETUP") && ture_of_rtp_tcp == 0){ // RTP_OVER_UDP
+            sscanf(request_message.url, "rtsp://%[^:]:", local_ip);
             if(memcmp(track, "track0", 6) == 0){
                 create_rtp_sockets(&server_udp_socket_rtp_fd, &server_udp_socket_rtcp_fd, &server_rtp_port, &server_rtp_port);
                 handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port, server_rtp_port, session_id);
@@ -219,8 +191,8 @@ void *doClientThd(void *arg)
                 handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port_1, server_rtp_port_1, session_id);
             }
         }
-        else if(!strcmp(method, "SETUP") && ture_of_rtp_tcp == 1){ // RTP_OVER_TCP
-            sscanf(url, "rtsp://%[^:]:", local_ip);
+        else if(!strcmp(request_message.method, "SETUP") && ture_of_rtp_tcp == 1){ // RTP_OVER_TCP
+            sscanf(request_message.url, "rtsp://%[^:]:", local_ip);
             if(memcmp(track, "track0", 6) == 0){
                 handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_0, session_id);
             }
@@ -228,45 +200,48 @@ void *doClientThd(void *arg)
                 handleCmd_SETUP_TCP(send_buf, cseq, local_ip, client_ip, sig_2, session_id);
             }
         }
-        else if(!strcmp(method, "PLAY")){
+        else if(!strcmp(request_message.method, "PLAY")){
             memset(url_play, 0, sizeof(url_play));
             memset(track, 0, sizeof(track));
-            strcpy(url_play, url);
-            if (handleCmd_PLAY(send_buf, cseq, url_play, session_id)){
-                printf("failed to handle play\n");
-                goto out;
-            }
+            strcpy(url_play, request_message.url);
+            handleCmd_PLAY(send_buf, cseq, url_play, session_id);
         }
         else{
             goto out;
         }
+need_more_data:
+        if(strlen(send_buf) > 0){
 #ifdef RTSP_DEBUG
-        printf("---------------S->C--------------\n");
-        printf("%s", send_buf);
+            printf("---------------S->C--------------\n");
+            printf("%s", send_buf);
 #endif
-        if(sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0) <= 0){
-            goto out;
+            sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
+            memset(send_buf, 0, sizeof(send_buf));
         }
-
-        if(!strcmp(method, "PLAY")){
-            struct timeval time_pre, time_now;
-            gettimeofday(&time_pre, NULL);
-
-            int ret = addClient(suffix, client_sock_fd, sig_0, sig_2, ture_of_rtp_tcp, client_ip, client_rtp_port, client_rtp_port_1,
+        memmove(recv_buf, recv_buf + used_bytes, total_len - used_bytes);
+        total_len -= used_bytes;
+        pos = total_len;
+        used_bytes = 0;
+        if(!strcmp(request_message.method, "PLAY")){
+            ret = addClient(suffix, client_sock_fd, sig_0, sig_2, ture_of_rtp_tcp, client_ip, client_rtp_port, client_rtp_port_1,
                                 server_udp_socket_rtp_fd, server_udp_socket_rtcp_fd, server_udp_socket_rtp_1_fd, server_udp_socket_rtcp_1_fd);
             if (ret < 0)
                 goto out;
             int sum = getClientNum();
-
-            gettimeofday(&time_now, NULL);
-            int time_handle = 1000 * (time_now.tv_sec - time_pre.tv_sec) + (time_now.tv_usec - time_pre.tv_usec) / 1000;
 #ifdef RTSP_DEBUG
-            printf("timeuse:%dms sum_client:%d\n\n", time_handle, sum);
+            printf("sum_client:%d\n\n", sum);
 #endif
             goto over;
         }
     }
 out:
+    if(strlen(send_buf) > 0){
+#ifdef RTSP_DEBUG
+        printf("---------------S->C--------------\n");
+        printf("%s", send_buf);
+#endif
+        sendWithTimeout(client_sock_fd, (const char*)send_buf, strlen(send_buf), 0);
+    }
     closeSocket(client_sock_fd);
     free(arg);
     return NULL;
