@@ -1,6 +1,5 @@
 #include "rtsp_message.h"
 #include "common.h"
-#include <stdio.h>
 
 void dumpRequestMessage(struct rtsp_request_message_st *request_message) {
     if(request_message == NULL){

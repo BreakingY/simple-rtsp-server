@@ -1,17 +1,24 @@
-#ifndef _IO_EPOLL_H_
-#define _IO_EPOLL_H_
+#ifndef _IO_EVENT_H_
+#define _IO_EVENT_H_
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <malloc.h>
 #include <stdint.h>
-#include <pthread.h>
+#if defined(__linux__) || defined(__linux)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#elif defined(_WIN32) || defined(_WIN64)
+#include <winsock2.h>
+#include <windows.h>
+#endif
+
+#include "mthread.h"
+#include "socket_io.h"
 typedef enum
 {
     FD_TYPE_TCP,
@@ -21,16 +28,26 @@ typedef struct
 {
     void *user_data;
     fd_type_t fd_type;
-    int fd;
+    socket_t fd;
+    int events;
 } event_data_ptr_t;
-enum EventType
+enum event_type
 {
+#if defined(__linux__) || defined(__linux)
 	EVENT_IN     = EPOLLIN,
 	EVENT_PRI    = EPOLLPRI,		
 	EVENT_OUT    = EPOLLOUT,
 	EVENT_ERR    = EPOLLERR,
 	EVENT_HUP    = EPOLLHUP,
 	EVENT_RDHUP  = EPOLLRDHUP
+#elif defined(_WIN32) || defined(_WIN64)
+    EVENT_IN = 0,
+    EVENT_PRI,		
+    EVENT_OUT,
+    EVENT_ERR,
+    EVENT_HUP,
+    EVENT_RDHUP
+#endif
 };
 typedef int (*event_callback_t)(event_data_ptr_t *);
 

@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <arpa/inet.h>
+#if defined(__linux__) || defined(__linux)
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -15,17 +15,31 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/select.h>
-
-int createTcpSocket();
-int createUdpSocket();
-int closeSocket(int sockfd);
-int bindSocketAddr(int sockfd, const char *ip, int port);
-int serverListen(int sockfd, int num);
-// return 0:timeout <0:error >0:client socket
-int acceptClient(int sockfd, char *ip, int *port, int timeout/*ms*/);
-int create_rtp_sockets(int *fd1, int *fd2, int *port1, int *port2);
-int recvWithTimeout(int sockfd, char *buffer, size_t len, int timeout/*ms*/);
-int sendWithTimeout(int sockfd, const char *buffer, size_t len, int timeout/*ms*/);
-int sendUDP(int sockfd, const char *message, size_t length, const char *ip, int port);
-int recvUDP(int sockfd, char *buffer, size_t buffer_len, char *ip, int *port);
+#elif defined(_WIN32) || defined(_WIN64)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 #endif
+
+#if defined(__linux__) || defined(__linux)
+typedef int socket_t;
+#elif defined(_WIN32) || defined(_WIN64)
+typedef SOCKET socket_t;
+#endif
+
+int socketInit();
+int socketDestroy();
+socket_t createTcpSocket();
+socket_t createUdpSocket();
+int closeSocket(socket_t sockfd);
+int bindSocketAddr(socket_t sockfd, const char *ip, int port);
+int serverListen(socket_t sockfd, int num);
+// return 0:timeout <0:error >0:client socket
+int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/);
+int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2);
+int recvWithTimeout(socket_t sockfd, char *buffer, size_t len, int timeout/*ms*/);
+int sendWithTimeout(socket_t sockfd, const char *buffer, size_t len, int timeout/*ms*/);
+int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip, int port);
+int recvUDP(socket_t sockfd, char *buffer, size_t buffer_len, char *ip, int *port);
+
+#endif // _SOCKET_IO_H_

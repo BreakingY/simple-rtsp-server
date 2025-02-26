@@ -15,10 +15,18 @@
 * 文件回放功能是可配置的，通过CMakeLists.txt中的"set(RTSP_FILE_SERVER FORCE)"实现开启和关闭文件回放功能(默认是打开的)，关闭文件回放功能，项目将不再依赖ffmpeg
 
 # 编译
-* mkdir build
-* cd build
-* cmake ..
-* make -j
+1. Linux
+   * cp CMakeLists_Linux.txt CMakeLists.txt
+   * mkdir build
+   * cd build
+   * cmake ..
+   * make -j
+2. Windows(MinGW + cmake)
+   * cp CMakeLists_Windows.txt CMakeLists.txt
+   * mkdir build
+   * cd build
+   * cmake -G "MinGW Makefiles" ..
+   * mingw32-make
 
 # 测试
 1. 文件回放

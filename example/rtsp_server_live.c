@@ -1,4 +1,5 @@
 #include "rtsp_server_handle.h"
+#include "mthread.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -124,7 +125,7 @@ void *sendDataThd(void *arg){
         type = frame[start_code] & 0x1f;
         if(type == 5 || type == 1){
             if(mpeg2_h264_new_access_unit(frame, frame_size)){
-                usleep(1000 * 1000 / fps);
+                m_sleep(1000 / fps);
             }
         }
         ret = sessionSendVideoData(context, frame + start_code, frame_size - start_code);
@@ -159,13 +160,13 @@ int main(int argc, char *argv[])
         return -1;
     }
     printf("rtsp://%s:%d/live\n", SERVER_IP, SERVER_PORT);
-    pthread_t tid;
-    ret = pthread_create(&tid, NULL, sendDataThd, NULL);
+    mthread_t tid;
+    ret = mthread_create(&tid, NULL, sendDataThd, NULL);
     if(ret < 0){
-        perror("sendDataThd pthread_create()");
+        printf("sendDataThd mthread_create()\n");
         return -1;
     }
-    pthread_detach(tid);
+    mthread_detach(tid);
     ret = rtspStartServer(auth, SERVER_IP, SERVER_PORT, USER, PASSWORD);
     if(ret < 0){
         printf("rtspStartServer error\n");

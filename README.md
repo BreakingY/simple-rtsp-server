@@ -11,14 +11,22 @@
 * rtsp client: https://github.com/BreakingY/simple-rtsp-client
   
 # The file playback function relies on ffmpeg
-* FFmpeg version>=4.x, test versions are 4.0.5 and 4.4.5
+* FFmpeg version >= 4.x, test versions are 4.0.5 and 4.4.5
 * The file playback function is configurable, and can be turned on and off through the "set(RTSP_FILE_SERVER FORCE)" in CMakeLists.txt (default is turned on). Turning off the file playback function means that the project will no longer rely on ffmpeg
 
 # Compile
-* mkdir build
-* cd build
-* cmake ..
-* make -j
+1. Linux
+   * cp CMakeLists_Linux.txt CMakeLists.txt
+   * mkdir build
+   * cd build
+   * cmake ..
+   * make -j
+2. Windows(MinGW + cmake)
+   * cp CMakeLists_Windows.txt CMakeLists.txt
+   * mkdir build
+   * cd build
+   * cmake -G "MinGW Makefiles" ..
+   * mingw32-make
 
 # Test
 1. File playback

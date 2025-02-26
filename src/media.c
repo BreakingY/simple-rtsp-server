@@ -103,18 +103,20 @@ static void sig_handler_media(int s)
 }
 static void *parseMp4SendDataThd(void *arg)
 {
+#if defined(__linux__) || defined(__linux)
     signal(SIGINT, sig_handler_media);
     signal(SIGQUIT, sig_handler_media);
     signal(SIGKILL, sig_handler_media);
+#endif
     struct mediainfo_st *mp4info = (struct mediainfo_st *)arg;
     int findstream = 0;
     int ret;
     if (mp4info == NULL)
-        pthread_exit(NULL);
+        mthread_exit(NULL);
     int64_t start_time = av_gettime();
     while (mp4info->run_flag == 1){
         if (mp4info == NULL){
-            pthread_exit(NULL);
+            mthread_exit(NULL);
         }
         findstream = 0;
         while(av_read_frame(mp4info->context, &mp4info->av_pkt) >= 0){
@@ -193,7 +195,7 @@ void *creatMedia(char *path_filename, void *data_call_back, void *close_call_bac
 
     mp4->context = NULL;
     mp4->fps = 0;
-    av_init_packet(&mp4->av_pkt);
+    // av_init_packet(&mp4->av_pkt);
     mp4->av_pkt.data = NULL;
     mp4->av_pkt.size = 0;
     mp4->curtimestamp = 0;
@@ -258,7 +260,7 @@ void *creatMedia(char *path_filename, void *data_call_back, void *close_call_bac
     mp4->frame->frame = NULL;
     mp4->frame->stat = WRITE;
     mp4->run_flag = 1;
-    pthread_create(&mp4->tid, NULL, parseMp4SendDataThd, (void *)mp4);
+    mthread_create(&mp4->tid, NULL, parseMp4SendDataThd, (void *)mp4);
     printf("creatMedia:%s file fps:%d\n", mp4->filename, mp4->fps);
     return mp4;
 }
@@ -343,7 +345,7 @@ void destroyMedia(void *context){
         return;
     }
     mp4->run_flag = 0;
-    pthread_join(mp4->tid, NULL);
+    mthread_join(mp4->tid, NULL);
     avformat_close_input(&mp4->context);
     avformat_free_context(mp4->context);
     av_packet_unref(&mp4->av_pkt);

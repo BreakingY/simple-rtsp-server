@@ -1,15 +1,12 @@
 #include "session.h"
-#include "media.h"
-#include "rtsp_message.h"
-#include "io_epoll.h"
 
 #define SESSION_DEBUG
 static char mp4Dir[1024];
 static int reloop_flag = 1;
-static pthread_t event_thd;
+static mthread_t event_thd;
 
 static struct session_st *session_arr[FILEMAX]; // Session array, dynamically add and delete
-static pthread_mutex_t mut_session = PTHREAD_MUTEX_INITIALIZER;
+static mthread_mutex_t mut_session;
 /*
  * lock  mut_session(session_arr) --> lock session_arr[i].mutx(session_st) --> lock session_arr[i].clientinfo_st[j].mut_list(To read and write to the circular buffer queue of the clientinfo_st)
  *  --> unlock clientinfo_st.mut_list --> unlock session_st.mutx --> unlock mut_session
@@ -17,7 +14,7 @@ static pthread_mutex_t mut_session = PTHREAD_MUTEX_INITIALIZER;
  */
 
 static int sum_client = 0; // Record how many clients are currently connecting to the server in total
-static pthread_mutex_t mut_clientcount = PTHREAD_MUTEX_INITIALIZER;
+static mthread_mutex_t mut_clientcount;
 static int eventAdd(int events, struct clientinfo_st *ev){
     if (ev->sd < 0)
         return -1;
@@ -135,8 +132,8 @@ static int sendClientMedia(event_data_ptr_t *event_data){
         return -1;
     }
     // Retrieve data from the circular queue and send it
-    pthread_mutex_lock(&clientinfo->session->mut); // Reading the client info in the session, locking is required
-    pthread_mutex_lock(&clientinfo->mut_list);
+    mthread_mutex_lock(&clientinfo->session->mut); // Reading the client info in the session, locking is required
+    mthread_mutex_lock(&clientinfo->mut_list);
     struct MediaPacket_st node;
     node.size = 0;
     if(fd == clientinfo->sd && ((clientinfo->sig_0 != -1) || (clientinfo->sig_2 != -1)) && (type == FD_TYPE_TCP)){ // rtp over tcp
@@ -151,8 +148,8 @@ static int sendClientMedia(event_data_ptr_t *event_data){
         // Extract a frame of audio
         node = getFrameFromList2(clientinfo);
     }
-    pthread_mutex_unlock(&clientinfo->mut_list);
-    pthread_mutex_unlock(&clientinfo->session->mut);
+    mthread_mutex_unlock(&clientinfo->mut_list);
+    mthread_mutex_unlock(&clientinfo->session->mut);
     if (node.size == 0){ // No data to send
         return 0;
     }
@@ -263,18 +260,18 @@ static int delClient(event_data_ptr_t *event_data){
 #endif
     struct session_st *session = clientinfo->session;
     int count = 0;
-    pthread_mutex_lock(&clientinfo->session->mut);
+    mthread_mutex_lock(&clientinfo->session->mut);
     clearClient(clientinfo);
     session->count--;
     count = session->count;
-    pthread_mutex_unlock(&clientinfo->session->mut);
+    mthread_mutex_unlock(&clientinfo->session->mut);
     /*Change the total number of customer connections*/
-    pthread_mutex_lock(&mut_clientcount);
+    mthread_mutex_lock(&mut_clientcount);
     sum_client--;
 #ifdef SESSION_DEBUG
     printf("sum_client:%d\n", sum_client);
 #endif
-    pthread_mutex_unlock(&mut_clientcount);
+    mthread_mutex_unlock(&mut_clientcount);
     if(count == 0){
         if(clientinfo->session->is_custom == 0){
 #ifdef RTSP_FILE_SERVER
@@ -289,7 +286,7 @@ static int delClient(event_data_ptr_t *event_data){
 static void sendData(void *arg)
 {
     struct clientinfo_st *clientinfo = (struct clientinfo_st *)arg;
-    pthread_mutex_lock(&clientinfo->mut_list);
+    mthread_mutex_lock(&clientinfo->mut_list);
     if(clientinfo->packet_num >= RING_BUFFER_MAX){
         printf("WARING ring buffer too large\n");
     }
@@ -311,7 +308,7 @@ static void sendData(void *arg)
             pushFrameToList1(clientinfo, ptr, ptr_len, AUDIO);
         }
     }
-    pthread_mutex_unlock(&clientinfo->mut_list);
+    mthread_mutex_unlock(&clientinfo->mut_list);
     return;
 }
 #endif
@@ -354,17 +351,20 @@ void sig_handler(int s)
 }
 int moduleInit()
 {
+    socketInit();
     memset(session_arr, 0, sizeof(struct session_st *));
     if(createEvent() < 0){
         return -1;
     }
     setEventCallback(handleClientTcpData, sendClientMedia, delClient);
-    int ret = pthread_create(&event_thd, NULL, startEventLoop, NULL);
+    int ret = mthread_create(&event_thd, NULL, startEventLoop, NULL);
     if(ret < 0){
-        perror("startEventLoop pthread_create()");
+        perror("startEventLoop mthread_create()");
         return -1;
     }
-    pthread_detach(event_thd);
+    mthread_detach(event_thd);
+    mthread_mutex_init(&mut_session, NULL);
+    mthread_mutex_init(&mut_clientcount, NULL);
     return 0;
 }
 
@@ -375,10 +375,11 @@ void moduleDel()
         delFileSession(session_arr[i]);
     }
 #endif
-    pthread_mutex_destroy(&mut_session);
-    pthread_mutex_destroy(&mut_clientcount);
     stopEventLoop();
     closeEvent();
+    mthread_mutex_destroy(&mut_session);
+    mthread_mutex_destroy(&mut_clientcount);
+    socketDestroy();
     return;
 }
 int initClient(struct session_st *session, struct clientinfo_st *clientinfo)
@@ -408,7 +409,7 @@ int initClient(struct session_st *session, struct clientinfo_st *clientinfo)
     clientinfo->tcp_header = NULL;
 
     // video
-    pthread_mutex_init(&clientinfo->mut_list, NULL);
+    mthread_mutex_init(&clientinfo->mut_list, NULL);
     clientinfo->packet_list = NULL;
     clientinfo->packet_list_size = 0;
     clientinfo->pos_list = 0;
@@ -474,7 +475,7 @@ int clearClient(struct clientinfo_st *clientinfo)
     }
 
     // video
-    pthread_mutex_destroy(&clientinfo->mut_list);
+    mthread_mutex_destroy(&clientinfo->mut_list);
     if(clientinfo->packet_list != NULL){
         free(clientinfo->packet_list);
         clientinfo->packet_list = NULL;
@@ -689,7 +690,7 @@ static void mediaCallBack(void *arg){
         return;
     }
     int ret = 0;
-    pthread_mutex_lock(&session->mut);
+    mthread_mutex_lock(&session->mut);
     for(int i = 0; i < CLIENTMAX; i++){
         if(session->clientinfo[i].sd != -1 && session->clientinfo[i].send_call_back != NULL && session->clientinfo[i].playflag == 1){
 #ifdef SEND_DATA_EVENT
@@ -718,7 +719,7 @@ static void mediaCallBack(void *arg){
 #endif
         }
     }
-    pthread_mutex_unlock(&session->mut);
+    mthread_mutex_unlock(&session->mut);
     return;
 }
 static void reloopCallBack(void *arg){
@@ -741,7 +742,7 @@ int addFileSession(char *path_filename,
     if(path_filename == NULL){
         return -1;
     }
-    pthread_mutex_lock(&mut_session);
+    mthread_mutex_lock(&mut_session);
     int pos = FILEMAX;
     for (int i = 0; i < FILEMAX; i++){
         if (session_arr[i] == NULL){
@@ -762,7 +763,7 @@ int addFileSession(char *path_filename,
 #ifdef SESSION_DEBUG
     printf("addFileSession:%s client_sock_fd:%d\n", session->filename, client_sock_fd);
 #endif
-    pthread_mutex_init(&session->mut, NULL);
+    mthread_mutex_init(&session->mut, NULL);
     session->count = 0;
 
     session_arr[pos] = session;
@@ -770,7 +771,7 @@ int addFileSession(char *path_filename,
     for(int j = 0; j < CLIENTMAX; j++){
         initClient(session_arr[pos], &session_arr[pos]->clientinfo[j]);
     }
-    pthread_mutex_lock(&session_arr[pos]->mut);
+    mthread_mutex_lock(&session_arr[pos]->mut);
     session_arr[pos]->count++;
     // add one client
     createClient(&session_arr[pos]->clientinfo[0], 
@@ -782,8 +783,8 @@ int addFileSession(char *path_filename,
     events |= EVENT_OUT;
 #endif
     eventAdd(events, &session_arr[pos]->clientinfo[0]);
-    pthread_mutex_unlock(&session_arr[pos]->mut);
-    pthread_mutex_unlock(&mut_session);
+    mthread_mutex_unlock(&session_arr[pos]->mut);
+    mthread_mutex_unlock(&mut_session);
     return 0;
 }
 #endif
@@ -796,7 +797,7 @@ void* addCustomSession(const char* session_name){
     memcpy(path_filename, mp4Dir, strlen(mp4Dir));
     memcpy(path_filename + strlen(mp4Dir), session_name, strlen(session_name));
     /*Check if the session already exists*/
-    pthread_mutex_lock(&mut_session);
+    mthread_mutex_lock(&mut_session);
     for(int i = 0; i < FILEMAX; i++){
         if(session_arr[i] == NULL){
             if(i < min_free_pos)
@@ -804,7 +805,7 @@ void* addCustomSession(const char* session_name){
             continue;
         }
         if(!strncmp(session_arr[i]->filename, path_filename, strlen(path_filename))){
-            pthread_mutex_unlock(&mut_session);
+            mthread_mutex_unlock(&mut_session);
             return session_arr[i];
         }
     }
@@ -821,7 +822,7 @@ void* addCustomSession(const char* session_name){
 #ifdef SESSION_DEBUG
     printf("addCustomSession:%s\n", session->filename);
 #endif
-    pthread_mutex_init(&session->mut, NULL);
+    mthread_mutex_init(&session->mut, NULL);
     session->count = 0;
 
     session_arr[min_free_pos] = session;
@@ -829,7 +830,7 @@ void* addCustomSession(const char* session_name){
     for(int j = 0; j < CLIENTMAX; j++){
         initClient(session_arr[min_free_pos], &session_arr[min_free_pos]->clientinfo[j]);
     }
-    pthread_mutex_unlock(&mut_session);
+    mthread_mutex_unlock(&mut_session);
     return session;
 }
 static int delAndFreeSession(struct session_st *session){
@@ -837,11 +838,11 @@ static int delAndFreeSession(struct session_st *session){
         return -1;
     }
     int client_num = 0;
-    pthread_mutex_lock(&mut_session);
+    mthread_mutex_lock(&mut_session);
 #ifdef SESSION_DEBUG
     printf("delAndFreeSession:%s\n", session->filename);
 #endif
-    pthread_mutex_lock(&session->mut);
+    mthread_mutex_lock(&session->mut);
     for(int i = 0; i < CLIENTMAX; i++){
         if(session->clientinfo[i].sd > 0){
             client_num++;
@@ -854,16 +855,16 @@ static int delAndFreeSession(struct session_st *session){
         free(session->filename);
         session->filename = NULL;
     }
-    pthread_mutex_unlock(&session->mut);
-    pthread_mutex_destroy(&session->mut);
+    mthread_mutex_unlock(&session->mut);
+    mthread_mutex_destroy(&session->mut);
     session_arr[session->pos] = NULL;
     free(session);
-    pthread_mutex_unlock(&mut_session);
+    mthread_mutex_unlock(&mut_session);
 
-    pthread_mutex_lock(&mut_clientcount);
+    mthread_mutex_lock(&mut_clientcount);
     sum_client -= client_num;
     int cnt = sum_client;
-    pthread_mutex_unlock(&mut_clientcount);
+    mthread_mutex_unlock(&mut_clientcount);
 #ifdef SESSION_DEBUG
     printf("sum_client:%d\n",cnt);
 #endif
@@ -915,12 +916,12 @@ int sendVideoData(void *context, uint8_t *data, int data_len){
     }
     struct session_st *session = (struct session_st *)context;
     int ret = 0;
-    pthread_mutex_lock(&session->mut);
+    mthread_mutex_lock(&session->mut);
     for (int i = 0; i < CLIENTMAX; i++){
         if (session->clientinfo[i].sd != -1 && session->clientinfo[i].playflag == 1){
             struct clientinfo_st *clientinfo = &session->clientinfo[i];
 #ifdef SEND_DATA_EVENT
-            pthread_mutex_lock(&clientinfo->mut_list);
+            mthread_mutex_lock(&clientinfo->mut_list);
             if(clientinfo->packet_num >= RING_BUFFER_MAX){
                 printf("WARING ring buffer too large\n");
             }
@@ -938,7 +939,7 @@ int sendVideoData(void *context, uint8_t *data, int data_len){
                     clientinfo->pos_last_packet = 0;
                 }
             }
-            pthread_mutex_unlock(&clientinfo->mut_list);
+            mthread_mutex_unlock(&clientinfo->mut_list);
 #else
             ret = sendDataToClient(clientinfo, data, data_len, VIDEO);
             if(ret <= 0){
@@ -947,7 +948,7 @@ int sendVideoData(void *context, uint8_t *data, int data_len){
 #endif
         }
     }
-    pthread_mutex_unlock(&session->mut);
+    mthread_mutex_unlock(&session->mut);
     return 0;
 }
 
@@ -957,12 +958,12 @@ int sendAudioData(void *context, uint8_t *data, int data_len){
     }
     struct session_st *session = (struct session_st *)context;
     int ret = 0;
-    pthread_mutex_lock(&session->mut);
+    mthread_mutex_lock(&session->mut);
     for (int i = 0; i < CLIENTMAX; i++){
         if (session->clientinfo[i].sd != -1 && session->clientinfo[i].playflag == 1){
             struct clientinfo_st *clientinfo = &session->clientinfo[i];
 #ifdef SEND_DATA_EVENT
-            pthread_mutex_lock(&clientinfo->mut_list);
+            mthread_mutex_lock(&clientinfo->mut_list);
             if(clientinfo->packet_num >= RING_BUFFER_MAX){
                 printf("WARING ring buffer too large\n");
             }
@@ -992,7 +993,7 @@ int sendAudioData(void *context, uint8_t *data, int data_len){
                     }
                 }
             }
-            pthread_mutex_unlock(&clientinfo->mut_list);
+            mthread_mutex_unlock(&clientinfo->mut_list);
 #else
             ret = sendDataToClient(clientinfo, data, data_len, AUDIO);
             if(ret <= 0){
@@ -1001,7 +1002,7 @@ int sendAudioData(void *context, uint8_t *data, int data_len){
 #endif
         }
     }
-    pthread_mutex_unlock(&session->mut);
+    mthread_mutex_unlock(&session->mut);
     return 0;
 }
 int getSessionAudioType(struct session_st *session){
@@ -1056,17 +1057,17 @@ int sessionIsExist(char* suffix){
     char path_filename[1024] = {0};
     memcpy(path_filename, mp4Dir, strlen(mp4Dir));
     memcpy(path_filename + strlen(mp4Dir), suffix, strlen(suffix));
-    pthread_mutex_lock(&mut_session);
+    mthread_mutex_lock(&mut_session);
     for (int i = 0; i < FILEMAX; i++){
         if ((session_arr[i] == NULL) || (session_arr[i]->filename == NULL)){
             continue;
         }
         if (!strncmp(session_arr[i]->filename, path_filename, strlen(path_filename))){
-            pthread_mutex_unlock(&mut_session);
+            mthread_mutex_unlock(&mut_session);
             return 1;
         }
     }
-    pthread_mutex_unlock(&mut_session);
+    mthread_mutex_unlock(&mut_session);
 #ifdef RTSP_FILE_SERVER
     FILE *file = fopen(path_filename, "r");
     if (file) {
@@ -1085,7 +1086,7 @@ int sessionGenerateSDP(char *suffix, char *localIp, char *buffer, int buffer_len
     char path_filename[1024] = {0};
     memcpy(path_filename, mp4Dir, strlen(mp4Dir));
     memcpy(path_filename + strlen(mp4Dir), suffix, strlen(suffix));
-    pthread_mutex_lock(&mut_session);
+    mthread_mutex_lock(&mut_session);
     for (int i = 0; i < FILEMAX; i++){   
         if((session_arr[i] == NULL) || (session_arr[i]->filename == NULL)){
             continue;
@@ -1093,18 +1094,18 @@ int sessionGenerateSDP(char *suffix, char *localIp, char *buffer, int buffer_len
         if(!strncmp(session_arr[i]->filename, path_filename, strlen(path_filename))){
             if(session_arr[i]->is_custom == 0){
 #ifdef RTSP_FILE_SERVER
-                pthread_mutex_unlock(&mut_session);
+                mthread_mutex_unlock(&mut_session);
                 return generateSDP(path_filename, localIp, buffer, buffer_len);
 #endif
             }
             else{
-                pthread_mutex_unlock(&mut_session);
+                mthread_mutex_unlock(&mut_session);
                 return generateSDPExt(localIp, buffer, buffer_len, session_arr[i]->video_type, 
                                     session_arr[i]->audio_type, session_arr[i]->sample_rate, session_arr[i]->profile, session_arr[i]->channels);
             }
         }
     }
-    pthread_mutex_unlock(&mut_session);
+    mthread_mutex_unlock(&mut_session);
 #ifdef RTSP_FILE_SERVER
     return generateSDP(path_filename, localIp, buffer, buffer_len);
 #endif
@@ -1129,21 +1130,21 @@ int addClient(char* suffix,
     memcpy(path_filename, mp4Dir, strlen(mp4Dir));
     memcpy(path_filename + strlen(mp4Dir), suffix, strlen(suffix));
     /*Check if the session already exists*/
-    pthread_mutex_lock(&mut_session);
+    mthread_mutex_lock(&mut_session);
     for(int i = 0; i < FILEMAX; i++){
         if(session_arr[i] == NULL){
             continue;
         }
         if(!strncmp(session_arr[i]->filename, path_filename, strlen(path_filename))){ // The session exists, add the client to the client queue of the session
-            pthread_mutex_lock(&session_arr[i]->mut);
+            mthread_mutex_lock(&session_arr[i]->mut);
             istrueflag = 1;
             pos = i;
 
             int posofclient = get_free_clientinfo(pos);
             if(posofclient < 0){ // Exceeding the maximum number of clients supported by a session, a session can support a maximum of FileMAX (1024) clients
                 printf("over client maxnum\n");
-                pthread_mutex_unlock(&session_arr[pos]->mut);
-                pthread_mutex_unlock(&mut_session);
+                mthread_mutex_unlock(&session_arr[pos]->mut);
+                mthread_mutex_unlock(&mut_session);
                 return -1;
             }
             createClient(&session_arr[pos]->clientinfo[posofclient], 
@@ -1159,11 +1160,11 @@ int addClient(char* suffix,
 #ifdef SESSION_DEBUG
             printf("append client ok fd:%d\n", session_arr[pos]->clientinfo[posofclient].sd);
 #endif
-            pthread_mutex_unlock(&session_arr[i]->mut);
+            mthread_mutex_unlock(&session_arr[i]->mut);
             break;
         }
     }
-    pthread_mutex_unlock(&mut_session);
+    mthread_mutex_unlock(&mut_session);
     if(istrueflag == 0){ // create a new file session, not custom session
 #ifdef RTSP_FILE_SERVER
         int ret = addFileSession(path_filename, client_sock_fd, sig_0, sig_2, ture_of_tcp, server_udp_socket_rtp, server_udp_socket_rtcp, server_udp_socket_rtp_1, server_udp_socket_rtcp_1, client_ip, client_rtp_port, client_rtp_port_1);
@@ -1176,16 +1177,16 @@ int addClient(char* suffix,
         return -1;
 #endif
     }
-    pthread_mutex_lock(&mut_clientcount);
+    mthread_mutex_lock(&mut_clientcount);
     sum_client++;
-    pthread_mutex_unlock(&mut_clientcount);
+    mthread_mutex_unlock(&mut_clientcount);
     return 0;
 }
 int getClientNum()
 {
     int sum;
-    pthread_mutex_lock(&mut_clientcount);
+    mthread_mutex_lock(&mut_clientcount);
     sum = sum_client;
-    pthread_mutex_unlock(&mut_clientcount);
+    mthread_mutex_unlock(&mut_clientcount);
     return sum;
 }

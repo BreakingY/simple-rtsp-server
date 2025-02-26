@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#if defined(__linux__) || defined(__linux)
 #include <signal.h>
-#include <pthread.h>
+#endif
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -14,6 +14,7 @@
 #include <libavutil/time.h>
 
 #include "common.h"
+#include "mthread.h"
 /*The status of buf and frame*/
 enum BufFrame_e
 {
@@ -57,7 +58,7 @@ struct mediainfo_st
     void (*data_call_back)(void *arg);
     void (*reloop_call_back)(void *arg);
     void *arg;
-    pthread_t tid;
+    mthread_t tid;
     int run_flag;
 };
 struct audioinfo_st{

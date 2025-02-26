@@ -20,14 +20,16 @@ void rtspDelSession(void *context){
     return delCustomSession(context);
 }
 int rtspStartServer(int auth, const char *server_ip, int server_port, const char *user, const char *password){
-    int server_sock_fd;
+    socket_t server_sock_fd;
     int ret;
+#if defined(__linux__) || defined(__linux)
     signal(SIGINT, sig_handler);
     signal(SIGQUIT, sig_handler);
     signal(SIGKILL, sig_handler);
 
     signal(SIGPIPE, SIG_IGN);
     signal(SIGFPE, SIG_IGN);
+#endif
 
     server_sock_fd = createTcpSocket();
     if(server_sock_fd < 0){
@@ -47,10 +49,10 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         return -1;
     }
     while(rtsp_run_flag == 1){
-        int client_sock_fd;
+        socket_t client_sock_fd;
         char client_ip[40];
         int client_port;
-        pthread_t tid;
+        mthread_t tid;
 
         client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port, 2000);
         if(client_sock_fd <= 0){
@@ -68,11 +70,11 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         arg->client_sock_fd = client_sock_fd;
         arg->auth = auth;
 
-        ret = pthread_create(&tid, NULL, doClientThd, (void *)arg);
+        ret = mthread_create(&tid, NULL, doClientThd, (void *)arg);
         if(ret < 0){
-            perror("doClientThd pthread_create()");
+            perror("doClientThd mthread_create()");
         }
-        pthread_detach(tid);
+        mthread_detach(tid);
     }
     closeSocket(server_sock_fd);
     return 0;

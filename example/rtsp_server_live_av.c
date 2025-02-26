@@ -1,4 +1,5 @@
 #include "rtsp_server_handle.h"
+#include "mthread.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,7 +126,7 @@ void *sendVideoDataThd(void *arg){
         type = frame[start_code] & 0x1f;
         if(type == 5 || type == 1){
             if(mpeg2_h264_new_access_unit(frame, frame_size)){
-                usleep(1000 * 1000 / fps);
+                m_sleep(1000 / fps);
             }
         }
         ret = sessionSendVideoData(context, frame + start_code, frame_size - start_code);
@@ -231,7 +232,7 @@ void *sendAudioDataThd(void *arg){
         if(ret < 0){
             printf("sessionSendAudioData error\n");
         }
-        usleep(1000 * 23);
+        m_sleep(23);
     }
     return NULL;
 }
@@ -266,20 +267,20 @@ int main(int argc, char *argv[])
         return -1;
     }
     printf("rtsp://%s:%d/live\n", SERVER_IP, SERVER_PORT);
-    pthread_t tid_v;
-    ret = pthread_create(&tid_v, NULL, sendVideoDataThd, NULL);
+    mthread_t tid_v;
+    ret = mthread_create(&tid_v, NULL, sendVideoDataThd, NULL);
     if(ret < 0){
-        perror("sendVideoDataThd pthread_create()");
+        printf("sendVideoDataThd mthread_create()\n");
         return -1;
     }
-    pthread_detach(tid_v);
-    pthread_t tid_a;
-    ret = pthread_create(&tid_a, NULL, sendAudioDataThd, NULL);
+    mthread_detach(tid_v);
+    mthread_t tid_a;
+    ret = mthread_create(&tid_a, NULL, sendAudioDataThd, NULL);
     if(ret < 0){
-        perror("sendAudioDataThd pthread_create()");
+        printf("sendAudioDataThd mthread_create()\n");
         return -1;
     }
-    pthread_detach(tid_a);
+    mthread_detach(tid_a);
     // Need sendVideoDataThd and sendAudioDataThd to achieve audio and video synchronization. This is just a test and have not implemented audio and video synchronization
     ret = rtspStartServer(auth, SERVER_IP, SERVER_PORT, USER, PASSWORD);
     if(ret < 0){

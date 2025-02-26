@@ -6,12 +6,13 @@
 #include <malloc.h>
 #include <stdint.h>
 
-#include <pthread.h>
-#include <signal.h>
-
 #include "common.h"
 #include "rtp.h"
 #include "socket_io.h"
+#include "media.h"
+#include "rtsp_message.h"
+#include "io_event.h"
+#include "mthread.h"
 
 #define CLIENTMAX           1024
 #define FILEMAX             1024
@@ -37,13 +38,13 @@ struct MediaPacket_st
 /*Record the data channel and packets of the client*/
 struct clientinfo_st
 {
-    int sd;          // client tcp socket
+    socket_t sd;          // client tcp socket
     // video
-    int udp_sd_rtp;  // server rtp udp socket
-    int udp_sd_rtcp; // server rtcp udp socket
+    socket_t udp_sd_rtp;  // server rtp udp socket
+    socket_t udp_sd_rtcp; // server rtcp udp socket
     // audio
-    int udp_sd_rtp_1;
-    int udp_sd_rtcp_1;
+    socket_t udp_sd_rtp_1;
+    socket_t udp_sd_rtcp_1;
 
     char client_ip[40];
     int client_rtp_port;
@@ -66,7 +67,7 @@ struct clientinfo_st
 
     // Circular buffer queue
     // video
-    pthread_mutex_t mut_list;
+    mthread_mutex_t mut_list;
     struct MediaPacket_st *packet_list;
     int packet_list_size; // Circular buffer queue size
     int pos_list;         // The next location to send data
@@ -90,7 +91,7 @@ struct session_st
 {
     void *media;
     char *filename;
-    pthread_mutex_t mut;
+    mthread_mutex_t mut;
     struct clientinfo_st clientinfo[CLIENTMAX]; // Client connection queue for session
     int count;
     int pos;

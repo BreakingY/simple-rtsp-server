@@ -3,11 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__linux__) || defined(__linux)
+#include <signal.h>
+#endif
 
 #include "common.h"
 #include "session.h"
 #include "rtsp_client_handle.h"
 #include "socket_io.h"
+#include "mthread.h"
 /*****rtsp*****/
 /**
  * initialization, must be called at the beginning of the program

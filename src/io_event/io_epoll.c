@@ -1,9 +1,10 @@
-#include "io_epoll.h"
+#include "io_event.h"
+#if defined(__linux__) || defined(__linux)
 #define EVENT_DEBUG
 #define EPOLL_MAX   1024
 static int epoll_fd;
 static int run_flag = 1;
-static pthread_mutex_t mut_epoll = PTHREAD_MUTEX_INITIALIZER;
+static mthread_mutex_t mut_epoll;
 event_callbacks_t event_callbacks = {NULL, NULL, NULL};
 void setEventCallback(event_callback_t event_in, event_callback_t event_out, event_callback_t event_close){
     event_callbacks.event_in = event_in;
@@ -17,22 +18,25 @@ int createEvent(){
         printf("create efd in %s err %d\n", __func__, epoll_fd);
         return -1;
     }
+    mthread_mutex_init(&mut_epoll, NULL);
     return 0;
 }
 int closeEvent(){
     if(epoll_fd >= 0){
         close(epoll_fd);
     }
+    mthread_mutex_destroy(&mut_epoll);
     return 0;
 }
 int addEvent(int events, event_data_ptr_t *event_data){
-    pthread_mutex_lock(&mut_epoll);
+    mthread_mutex_lock(&mut_epoll);
     struct epoll_event epv = {0, {0}};
     epv.data.ptr = event_data;
+    event_data->events = events;
     epv.events = events;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_data->fd, &epv) < 0){
         printf("addEvent failed [fd=%d]\n", event_data->fd);
-        pthread_mutex_unlock(&mut_epoll);
+        mthread_mutex_unlock(&mut_epoll);
         return -1;
     }
     else{
@@ -40,16 +44,16 @@ int addEvent(int events, event_data_ptr_t *event_data){
         printf("addEvent OK [fd=%d]\n", event_data->fd);
 #endif
     }
-    pthread_mutex_unlock(&mut_epoll);
+    mthread_mutex_unlock(&mut_epoll);
     return 0;
 }
 int delEvent(event_data_ptr_t *event_data){
-    pthread_mutex_lock(&mut_epoll);
+    mthread_mutex_lock(&mut_epoll);
     struct epoll_event epv = {0, {0}};
     epv.data.ptr = NULL;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, event_data->fd, &epv) < 0){
         printf("eventDel failed [fd=%d]\n", event_data->fd);
-        pthread_mutex_unlock(&mut_epoll);
+        mthread_mutex_unlock(&mut_epoll);
         return -1;
     }
     else{
@@ -57,16 +61,16 @@ int delEvent(event_data_ptr_t *event_data){
         printf("delEvent OK [fd=%d]\n", event_data->fd);
 #endif
     }
-    pthread_mutex_unlock(&mut_epoll);
+    mthread_mutex_unlock(&mut_epoll);
     return 0;
 }
 void *startEventLoop(void *arg){
     while (run_flag == 1){
         struct epoll_event events[EPOLL_MAX];
-        pthread_mutex_lock(&mut_epoll);
+        mthread_mutex_lock(&mut_epoll);
         int timeout = 10; // ms
         int nfd = epoll_wait(epoll_fd, events, EPOLL_MAX, timeout);
-        pthread_mutex_unlock(&mut_epoll);
+        mthread_mutex_unlock(&mut_epoll);
         if(nfd < 0){
             printf("epoll_wait error, exit\n");
             exit(-1);
@@ -105,3 +109,4 @@ void stopEventLoop(){
     run_flag = 0;
     return;
 }
+#endif

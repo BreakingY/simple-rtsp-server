@@ -2,8 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
+#if defined(__linux__) || defined(__linux)
 #include <sys/time.h>
+#elif defined(_WIN32) || defined(_WIN64)
+#include <Windows.h>
+#endif
 
 #ifdef RTSP_FILE_SERVER
 #include <libavcodec/avcodec.h>
@@ -483,8 +486,20 @@ void adts_header(char *adts_header_buffer, int data_len, int aactype, int freque
 // t (rtsp/rtp timestamp, in seconds)=t (collection timestamp, in seconds) * audio and video clock frequency 
 // or t (rtsp/rtp timestamp, in milliseconds)=(collection timestamp, in milliseconds) * (clock frequency/1000)
 uint32_t getTimestamp(uint32_t sample_rate){
+    uint32_t ts;
+#if defined(__linux__) || defined(__linux)
     struct timeval tv = {0};
     gettimeofday(&tv, NULL);
-    uint32_t ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // clockRate/1000;
+    ts = ((tv.tv_sec * 1000) + ((tv.tv_usec + 500) / 1000)) * sample_rate / 1000; // clockRate/1000;
+#elif defined(_WIN32) || defined(_WIN64)
+    FILETIME ft;
+    SYSTEMTIME st;
+    uint64_t epoch_time = 0;
+    GetSystemTime(&st);
+    SystemTimeToFileTime(&st, &ft);
+    epoch_time = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    uint64_t milliseconds = epoch_time / 10000;
+    ts = (uint32_t)((milliseconds + 500) * sample_rate / 1000);
+#endif
     return ts;
 }

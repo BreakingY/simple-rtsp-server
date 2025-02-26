@@ -1,16 +1,15 @@
 #include "rtsp_client_handle.h"
-#include "socket_io.h"
-#include "session.h"
-#include "rtsp_message.h"
 #define BUF_MAX_SIZE (1024 * 1024)
 #define RTSP_DEBUG
 void *doClientThd(void *arg)
 {
+#if defined(__linux__) || defined(__linux)
     signal(SIGINT, sig_handler);
     signal(SIGQUIT, sig_handler);
     signal(SIGKILL, sig_handler);
+#endif
     struct thd_arg_st *arg_thd = (struct thd_arg_st *)arg;
-    int client_sock_fd = arg_thd->client_sock_fd;
+    socket_t client_sock_fd = arg_thd->client_sock_fd;
     char *client_ip = arg_thd->client_ip;
     int client_port = arg_thd->client_port;
     char suffix[100] = {0};
@@ -36,10 +35,10 @@ void *doClientThd(void *arg)
     int server_rtcp_port = -1;
     int server_rtp_port_1 = -1;
     int server_rtcp_port_1 = -1;
-    int server_udp_socket_rtp_fd = -1;
-    int server_udp_socket_rtcp_fd = -1;
-    int server_udp_socket_rtp_1_fd = -1;
-    int server_udp_socket_rtcp_1_fd = -1;
+    socket_t server_udp_socket_rtp_fd = -1;
+    socket_t server_udp_socket_rtcp_fd = -1;
+    socket_t server_udp_socket_rtp_1_fd = -1;
+    socket_t server_udp_socket_rtcp_1_fd = -1;
 
     char ch = '/';
     int findflag = 0;
