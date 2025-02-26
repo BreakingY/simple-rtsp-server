@@ -359,7 +359,7 @@ int moduleInit()
     setEventCallback(handleClientTcpData, sendClientMedia, delClient);
     int ret = mthread_create(&event_thd, NULL, startEventLoop, NULL);
     if(ret < 0){
-        perror("startEventLoop mthread_create()");
+        printf("startEventLoop mthread_create()\n");
         return -1;
     }
     mthread_detach(event_thd);

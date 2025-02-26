@@ -72,7 +72,7 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
 
         ret = mthread_create(&tid, NULL, doClientThd, (void *)arg);
         if(ret < 0){
-            perror("doClientThd mthread_create()");
+            printf("doClientThd mthread_create()\n");
         }
         mthread_detach(tid);
     }
