@@ -16,13 +16,11 @@
 
 # 编译
 1. Linux
-   * cp CMakeLists_Linux.txt CMakeLists.txt
    * mkdir build
    * cd build
    * cmake ..
    * make -j
 2. Windows(MinGW + cmake)
-   * cp CMakeLists_Windows.txt CMakeLists.txt
    * mkdir build
    * cd build
    * cmake -G "MinGW Makefiles" ..
