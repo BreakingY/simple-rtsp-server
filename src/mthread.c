@@ -66,8 +66,9 @@ int mthread_create(mthread_t *mthread, void *attr, mthread_func thd_func, void *
 }
 
 int mthread_detach(mthread_t mthread){
-    // Windows doesn't have a direct "detach" function like POSIX, 
-    // so we simulate it by not joining the thread. It will clean up when done.
+    if(mthread){
+        CloseHandle(mthread);
+    }
     return 0;
 }
 
