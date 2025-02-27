@@ -37,10 +37,14 @@ int addEvent(int events, event_data_ptr_t *event_data){
             event_listen[i] = event_data;
             event_listen_cnt++;
             mthread_mutex_unlock(&mut_select);
+#ifdef EVENT_DEBUG
+            printf("addEvent OK [fd=%d]\n", event_data->fd);
+#endif
             return 0;
         }
     }
     mthread_mutex_unlock(&mut_select);
+    printf("addEvent failed [fd=%d]\n", event_data->fd);
     return -1;
 }
 
@@ -52,10 +56,14 @@ int delEvent(event_data_ptr_t *event_data){
             event_listen[i] = NULL;
             event_listen_cnt--;
             mthread_mutex_unlock(&mut_select);
+#ifdef EVENT_DEBUG
+            printf("delEvent OK [fd=%d]\n", event_data->fd);
+#endif
             return 0;
         }
     }
     mthread_mutex_unlock(&mut_select);
+    printf("eventDel failed [fd=%d]\n", event_data->fd);
     return -1;
 }
 
