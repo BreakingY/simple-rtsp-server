@@ -48,15 +48,12 @@ int closeSocket(socket_t sockfd){
 }
 int bindSocketAddr(socket_t sockfd, const char *ip, int port)
 {
-#if defined(__linux__) || defined(__linux)
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
+#if defined(__linux__) || defined(__linux)
     addr.sin_addr.s_addr = inet_addr(ip);
 #elif defined(_WIN32) || defined(_WIN64)
-    SOCKADDR_IN addr;
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
     addr.sin_addr.S_un.S_addr = inet_addr(ip);
 #endif
     return bind(sockfd, (struct sockaddr *)&addr, sizeof(struct sockaddr));
@@ -64,14 +61,44 @@ int bindSocketAddr(socket_t sockfd, const char *ip, int port)
 int serverListen(socket_t sockfd, int num){
     return listen(sockfd, num);
 }
+int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/){
+    struct sockaddr_in server_addr;
+    int ret;
+    fd_set write_fds;
+    struct timeval timeout_convert;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+#if defined(__linux__) || defined(__linux)
+    server_addr.sin_addr.s_addr = inet_addr(ip);
+#elif defined(_WIN32) || defined(_WIN64)
+    server_addr.sin_addr.S_un.S_addr = inet_addr(ip);
+#endif
+    if (timeout > 0) {
+        FD_ZERO(&write_fds);
+        FD_SET(sockfd, &write_fds);
+        timeout_convert.tv_sec = timeout / 1000;
+        timeout_convert.tv_usec = (timeout % 1000) * 1000;
+
+        ret = select(sockfd + 1, NULL, &write_fds, NULL, &timeout_convert);
+        if(ret <= 0){
+            return -1;
+        }
+    }
+    ret = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    if (ret < 0) {
+        closeSocket(sockfd);
+        return -1;
+    }
+    return 0;
+}
 int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
 {
     socket_t clientfd;
-#if defined(__linux__) || defined(__linux)
     struct sockaddr_in addr;
+#if defined(__linux__) || defined(__linux)
     socklen_t len = 0;
 #elif defined(_WIN32) || defined(_WIN64)
-    SOCKADDR_IN addr;
     int len = 0;
 #endif
     fd_set read_fds;
@@ -110,14 +137,12 @@ int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
 }
 int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
 {
-#if defined(__linux__) || defined(__linux)
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
+#if defined(__linux__) || defined(__linux)
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 #elif defined(_WIN32) || defined(_WIN64)
-    SOCKADDR_IN addr;
-    addr.sin_family = AF_INET;
     addr.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
 #endif
     int port = 0;
@@ -129,11 +154,7 @@ int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
 
     *fd2 = socket(AF_INET, SOCK_DGRAM, 0);
     if (*fd2 < 0){
-#if defined(__linux__) || defined(__linux)
-        close(*fd1);
-#elif defined(_WIN32) || defined(_WIN64)
-        closesocket(*fd1);
-#endif
+        closeSocket(*fd1);
         return -1;
     }
     for (port = 1024; port <= 65535; port += 2){
@@ -147,13 +168,8 @@ int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
             }
         }
     }
-#if defined(__linux__) || defined(__linux)
-    close(*fd1);
-    close(*fd2);    
-#elif defined(_WIN32) || defined(_WIN64)
-    closesocket(*fd1);
-    closesocket(*fd2);
-#endif
+    closeSocket(*fd1);
+    closeSocket(*fd2);
     return -1;
 }
 int recvWithTimeout(socket_t sockfd, char *buffer, size_t len, int timeout/*ms*/){
@@ -209,16 +225,13 @@ int sendWithTimeout(socket_t sockfd, const char *buffer, size_t len, int timeout
 }
 
 int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip, int port){
-#if defined(__linux__) || defined(__linux)
     struct sockaddr_in dest_addr;
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(port);
+#if defined(__linux__) || defined(__linux)
     dest_addr.sin_addr.s_addr = inet_addr(ip);
 #elif defined(_WIN32) || defined(_WIN64)
-    SOCKADDR_IN dest_addr;
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(port);
     dest_addr.sin_addr.S_un.S_addr = inet_addr(ip);
 #endif
     ssize_t sent_bytes = sendto(sockfd, message, length, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
@@ -226,11 +239,10 @@ int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip,
 }
 
 int recvUDP(socket_t sockfd, char *buffer, size_t buffer_len, char *ip, int *port){
-#if defined(__linux__) || defined(__linux)
     struct sockaddr_in src_addr;
+#if defined(__linux__) || defined(__linux)
     socklen_t addr_len = sizeof(src_addr);
 #elif defined(_WIN32) || defined(_WIN64)
-    SOCKADDR_IN src_addr;
     int addr_len = sizeof(src_addr);
 #endif
     ssize_t recv_bytes = recvfrom(sockfd, buffer, buffer_len, 0, (struct sockaddr *)&src_addr, &addr_len);

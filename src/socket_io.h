@@ -34,6 +34,8 @@ socket_t createUdpSocket();
 int closeSocket(socket_t sockfd);
 int bindSocketAddr(socket_t sockfd, const char *ip, int port);
 int serverListen(socket_t sockfd, int num);
+// 0:OK <0: error or timeout
+int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/);
 // return 0:timeout <0:error >0:client socket
 int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/);
 int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2);
