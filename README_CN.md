@@ -2,7 +2,7 @@
 * RTSP1.0
 * H264/H265/AAC/PCMA(G711A)
 * 支持rtp over udp、rtp over tcp, 支持鉴权
-* epoll
+* epoll/select
 * 内置文件回放功能，把视频文件(MP4、MKV)放到指定文件夹下面，客户端通过"rtsp://ip:port/文件名"即可拉流
 * 可添加自定义rtsp会话并添加音视频源
 * 注意视频不要包含B帧
