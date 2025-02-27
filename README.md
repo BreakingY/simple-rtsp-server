@@ -3,7 +3,7 @@
 * RTSP1.0
 * H264/H265/AAC/PCMA(G711A)
 * Support rtp over udp、rtp over tcp, support authentication
-* epoll
+* epoll/select
 * Built in file playback function, place video files (MP4, MKV) in a designated folder, and the client can access them through“ rtsp://ip:port/filename "can pull the stream
 * Can add custom RTSP sessions and add audio and video sources
 * Be careful not to include B-frames in the video
