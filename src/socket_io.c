@@ -250,14 +250,10 @@ int recvUDP(socket_t sockfd, char *buffer, size_t buffer_len, char *ip, int *por
         return recv_bytes;
     }
     if(ip){
-#if defined(__linux__) || defined(__linux)
-        inet_ntop(AF_INET, &src_addr.sin_addr, ip, INET_ADDRSTRLEN);
-#elif defined(_WIN32) || defined(_WIN64)
         const char *ip_str = inet_ntoa(src_addr.sin_addr);
         if(ip_str){
             strncpy(ip, ip_str, INET_ADDRSTRLEN);
         }
-#endif
     }
     if(port){
         *port = ntohs(src_addr.sin_port);
