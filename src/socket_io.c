@@ -87,7 +87,6 @@ int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/
     }
     ret = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
     if (ret < 0) {
-        closeSocket(sockfd);
         return -1;
     }
     return 0;

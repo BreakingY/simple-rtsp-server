@@ -23,10 +23,9 @@
 
 #if defined(__linux__) || defined(__linux)
 typedef int socket_t;
-/*Note that socket_t is unsigned in Windows, so do not compare its size with 0 to determine if it is valid*/
-/*socket_t is int in Linux*/
 #define INVALID_SOCKET -1
 #elif defined(_WIN32) || defined(_WIN64)
+/*Note that socket_t is unsigned in Windows, so do not compare its size with 0 to determine if it is valid*/
 typedef SOCKET socket_t;
 #endif
 
