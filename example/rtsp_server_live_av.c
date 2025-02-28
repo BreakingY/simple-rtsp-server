@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
     }
     ret = sessionAddAudio(context, AUDIO_AAC, 1, 44100, 2);
     if(ret < 0){
-        printf("sessionAddVideo error\n");
+        printf("sessionAddAudio error\n");
         return -1;
     }
     printf("rtsp://%s:%d/live\n", SERVER_IP, SERVER_PORT);
