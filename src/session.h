@@ -14,8 +14,8 @@
 #include "io_event.h"
 #include "mthread.h"
 
-#define CLIENTMAX           1024
-#define FILEMAX             1024
+#define CLIENTMAX           512
+#define FILEMAX             512
 #define VIDEO_DATA_MAX_SIZE 2 * 1024 * 1024
 #define RING_BUFFER_MAX     32
 // #define SEND_DATA_EVENT // If using event to send audio and video, the memory grows rapidly and needs to be fixed
@@ -45,6 +45,8 @@ struct clientinfo_st
     // audio
     socket_t udp_sd_rtp_1;
     socket_t udp_sd_rtcp_1;
+
+    event_data_ptr_t *event_data[5]; // tcp/rtp1/rtcp1/rtp2/rtcp2
 
     char client_ip[40];
     int client_rtp_port;
@@ -148,8 +150,8 @@ struct MediaPacket_st getFrameFromList2(struct clientinfo_st *clientinfo);
  * @return 0:ok <0:error
  */
 int createClient(struct clientinfo_st *clientinfo, 
-    int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
-    int server_rtp_fd, int server_rtcp_fd, int server_rtp_fd_1, int server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
+    socket_t client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
+    socket_t server_rtp_fd, socket_t server_rtcp_fd, socket_t server_rtp_fd_1, socket_t server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
     );
 #ifdef RTSP_FILE_SERVER
 /**
@@ -157,8 +159,8 @@ int createClient(struct clientinfo_st *clientinfo,
  * @return 0:ok <0:error
  */
 int addFileSession(char *path_filename, 
-                int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
-                int server_rtp_fd, int server_rtcp_fd, int server_rtp_fd_1, int server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
+                socket_t client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
+                socket_t server_rtp_fd, socket_t server_rtcp_fd, socket_t server_rtp_fd_1, socket_t server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
                 );
 /**
  * delete file session
@@ -214,9 +216,9 @@ int sessionGenerateSDP(char *suffix, char *localIp, char *buffer, int buffer_len
  * @return 0:ok <0:error
  */
 int addClient(char* suffix, 
-            int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
+            socket_t client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
             char *client_ip, int client_rtp_port,int client_rtp_port_1, /*client udp info*/
-            int server_udp_socket_rtp, int server_udp_socket_rtcp, int server_udp_socket_rtp_1, int server_udp_socket_rtcp_1 /*udp socket*/
+            socket_t server_udp_socket_rtp, socket_t server_udp_socket_rtcp, socket_t server_udp_socket_rtp_1, socket_t server_udp_socket_rtcp_1 /*udp socket*/
             );
 /**
  * otal number of client connections

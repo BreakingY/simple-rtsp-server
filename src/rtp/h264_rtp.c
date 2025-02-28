@@ -1,5 +1,5 @@
 #include "rtp.h"
-int rtpSendH264Frame(int sd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, uint8_t *frame, uint32_t frame_size, int fps, int sig_0, char *client_ip, int client_rtp_port)
+int rtpSendH264Frame(socket_t sd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, uint8_t *frame, uint32_t frame_size, int fps, int sig_0, char *client_ip, int client_rtp_port)
 {
     uint8_t nalu_type; // nalu第一个字节
     int send_bytes = 0;

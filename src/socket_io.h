@@ -23,6 +23,9 @@
 
 #if defined(__linux__) || defined(__linux)
 typedef int socket_t;
+/*Note that socket_t is unsigned in Windows, so do not compare its size with 0 to determine if it is valid*/
+/*socket_t is int in Linux*/
+#define INVALID_SOCKET -1
 #elif defined(_WIN32) || defined(_WIN64)
 typedef SOCKET socket_t;
 #endif
@@ -34,10 +37,8 @@ socket_t createUdpSocket();
 int closeSocket(socket_t sockfd);
 int bindSocketAddr(socket_t sockfd, const char *ip, int port);
 int serverListen(socket_t sockfd, int num);
-// 0:OK <0: error or timeout
 int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/);
-// return 0:timeout <0:error >0:client socket
-int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/);
+socket_t acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/);
 int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2);
 int recvWithTimeout(socket_t sockfd, char *buffer, size_t len, int timeout/*ms*/);
 int sendWithTimeout(socket_t sockfd, const char *buffer, size_t len, int timeout/*ms*/);

@@ -20,8 +20,8 @@ socket_t createTcpSocket()
     int on = 1;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-        return -1;
+    if ((sockfd == INVALID_SOCKET) || (sockfd < 0))
+        return INVALID_SOCKET;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
     return sockfd;
 }
@@ -30,13 +30,13 @@ socket_t createUdpSocket()
     socket_t sockfd;
     int on = 1;
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0)
-        return -1;
+    if ((sockfd == INVALID_SOCKET) || (sockfd < 0))
+        return INVALID_SOCKET;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
     return sockfd;
 }
 int closeSocket(socket_t sockfd){
-    if(sockfd < 0){
+    if((sockfd == INVALID_SOCKET) || (sockfd < 0)){
         return -1;
     }
 #if defined(__linux__) || defined(__linux)
@@ -92,7 +92,7 @@ int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/
     }
     return 0;
 }
-int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
+socket_t acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
 {
     socket_t clientfd;
     struct sockaddr_in addr;
@@ -117,23 +117,23 @@ int acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
     ret = select(sockfd + 1, &read_fds, NULL, NULL, &timeout_convert);
     if(ret < 0){
         printf("select err: %d\n", ret);
-        return -1;
+        return INVALID_SOCKET;
     }
     else if(ret == 0){
         // printf("accept timeout\n");
-        return 0;
+        return INVALID_SOCKET;
     } 
     else{
         clientfd = accept(sockfd, (struct sockaddr *)&addr, &len);
-        if(clientfd < 0){
+        if((clientfd == INVALID_SOCKET) || (clientfd < 0)){
             printf("accept err: %d\n", clientfd);
-            return -1;
+            return INVALID_SOCKET;
         }
         strcpy(ip, inet_ntoa(addr.sin_addr));
         *port = ntohs(addr.sin_port);
         return clientfd;
     }
-    return -1;
+    return INVALID_SOCKET;
 }
 int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
 {
@@ -148,12 +148,12 @@ int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
     int port = 0;
 
     *fd1 = socket(AF_INET, SOCK_DGRAM, 0);
-    if(*fd1 < 0){
+    if((*fd1 < 0) || (*fd1 == INVALID_SOCKET)){
         return -1;
     }
 
     *fd2 = socket(AF_INET, SOCK_DGRAM, 0);
-    if (*fd2 < 0){
+    if ((*fd2 < 0) || (*fd2 == INVALID_SOCKET)){
         closeSocket(*fd1);
         return -1;
     }

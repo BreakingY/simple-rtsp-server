@@ -10,6 +10,11 @@ typedef pthread_t mthread_t;
 typedef pthread_mutex_t mthread_mutex_t;
 #elif defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
+#define TASK_SCHEDULER_PRIORITY_LOW       0
+#define TASK_SCHEDULER_PRIORITY_NORMAL    1
+#define TASK_SCHEDULER_PRIORITYO_HIGH     2
+#define TASK_SCHEDULER_PRIORITY_HIGHEST   3
+#define TASK_SCHEDULER_PRIORITY_REALTIME  4
 typedef HANDLE mthread_t;
 typedef CRITICAL_SECTION mthread_mutex_t;
 #endif

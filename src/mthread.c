@@ -62,6 +62,24 @@ int mthread_create(mthread_t *mthread, void *attr, mthread_func thd_func, void *
     if (*mthread == NULL) {
         return -1;
     }
+    const int priority = TASK_SCHEDULER_PRIORITY_REALTIME;
+    switch(priority){
+        case TASK_SCHEDULER_PRIORITY_LOW:
+            SetThreadPriority(*mthread, THREAD_PRIORITY_BELOW_NORMAL);
+            break;
+        case TASK_SCHEDULER_PRIORITY_NORMAL:
+            SetThreadPriority(*mthread, THREAD_PRIORITY_NORMAL);
+            break;
+        case TASK_SCHEDULER_PRIORITYO_HIGH:
+            SetThreadPriority(*mthread, THREAD_PRIORITY_ABOVE_NORMAL);
+            break;
+        case TASK_SCHEDULER_PRIORITY_HIGHEST:
+            SetThreadPriority(*mthread, THREAD_PRIORITY_HIGHEST);
+            break;
+        case TASK_SCHEDULER_PRIORITY_REALTIME:
+            SetThreadPriority(*mthread, THREAD_PRIORITY_TIME_CRITICAL);
+            break;
+    }
     return 0;
 }
 

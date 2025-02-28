@@ -2,7 +2,7 @@
 // char *aac_filename = "test_out.aac";
 // FILE *aac_fd = NULL;
 
-int rtpSendAACFrame(int fd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, char *data, int size, uint32_t sample_rate, int channels, int profile, int sig, char *client_ip, int client_rtp_port)
+int rtpSendAACFrame(socket_t fd, struct rtp_tcp_header *tcp_header, struct RtpPacket *rtp_packet, char *data, int size, uint32_t sample_rate, int channels, int profile, int sig, char *client_ip, int client_rtp_port)
 {
     // if(aac_fd==NULL){
     //     aac_fd = fopen(aac_filename, "wb");

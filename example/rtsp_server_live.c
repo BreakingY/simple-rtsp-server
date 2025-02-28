@@ -102,12 +102,16 @@ int mpeg2_h264_new_access_unit(uint8_t *buffer, int len){
     return 0;
 }
 void *sendDataThd(void *arg){
-    FILE *fp = fopen(file, "r");
+    FILE *fp = fopen(file, "rb");
     if(fp == NULL){
         printf("file not exist\n");
         exit(0);
     }
-    uint8_t frame[BUFFER];
+    uint8_t *frame= (uint8_t*)malloc(BUFFER);
+    if(frame == NULL){
+        printf("malloc error\n");
+        exit(0);
+    }
     int frame_size = 0;
     int fps = 25;
     int start_code;
@@ -132,6 +136,9 @@ void *sendDataThd(void *arg){
         if(ret < 0){
             printf("sessionSendVideoData error\n");
         }
+    }
+    if(frame){
+        free(frame);
     }
     return NULL;
 }

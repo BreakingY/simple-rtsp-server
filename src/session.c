@@ -16,11 +16,12 @@ static mthread_mutex_t mut_session;
 static int sum_client = 0; // Record how many clients are currently connecting to the server in total
 static mthread_mutex_t mut_clientcount;
 static int eventAdd(int events, struct clientinfo_st *ev){
-    if (ev->sd < 0)
+    if (ev->sd == INVALID_SOCKET)
         return -1;
     // media
     if(ev->transport == RTP_OVER_TCP){
         event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+        ev->event_data[0] = event_data;
         event_data->user_data = (void *)ev;
         event_data->fd = ev->sd;
         event_data->fd_type = FD_TYPE_TCP;
@@ -32,6 +33,7 @@ static int eventAdd(int events, struct clientinfo_st *ev){
     else{
         // Monitor client TCP connections and handle client shutdown events
         event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+        ev->event_data[0] = event_data;
         event_data->user_data = (void *)ev;
         event_data->fd = ev->sd;
         event_data->fd_type = FD_TYPE_UDP_RTP;
@@ -40,8 +42,9 @@ static int eventAdd(int events, struct clientinfo_st *ev){
             return -1;
         }
 
-        if (ev->udp_sd_rtp != -1){ // video
+        if (ev->udp_sd_rtp != INVALID_SOCKET){ // video
             event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+            ev->event_data[1] = event_data;
             event_data->user_data = (void *)ev;
             event_data->fd = ev->udp_sd_rtp;
             event_data->fd_type = FD_TYPE_UDP_RTP;
@@ -50,8 +53,9 @@ static int eventAdd(int events, struct clientinfo_st *ev){
                 return -1;
             }
         }
-        if(ev->udp_sd_rtp_1 != -1){ // audio
+        if(ev->udp_sd_rtp_1 != INVALID_SOCKET){ // audio
             event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
+            ev->event_data[3] = event_data;
             event_data->user_data = (void *)ev;
             event_data->fd = ev->udp_sd_rtp_1;
             event_data->fd_type = FD_TYPE_UDP_RTP;
@@ -68,7 +72,7 @@ static int eventAdd(int events, struct clientinfo_st *ev){
 static int handleClientTcpData(event_data_ptr_t *event_data){
     struct clientinfo_st *clientinfo = (struct clientinfo_st *)event_data->user_data;
     int type = event_data->fd_type;
-    int fd = event_data->fd;
+    socket_t fd = event_data->fd;
     if(clientinfo == NULL){
         return -1;
     }
@@ -127,7 +131,7 @@ static int handleClientTcpData(event_data_ptr_t *event_data){
 static int sendClientMedia(event_data_ptr_t *event_data){
     struct clientinfo_st *clientinfo = (struct clientinfo_st *)event_data->user_data;
     int type = event_data->fd_type;
-    int fd = event_data->fd;
+    socket_t fd = event_data->fd;
     if(clientinfo == NULL){
         return -1;
     }
@@ -219,41 +223,26 @@ static int sendClientMedia(event_data_ptr_t *event_data){
 }
 static int eventDel(struct clientinfo_st *ev)
 {
-    if(ev->sd < 0)
+    if(ev->sd == INVALID_SOCKET)
         return -1;
-    event_data_ptr_t *event_data = (event_data_ptr_t *)malloc(sizeof(event_data_ptr_t));
-    event_data->user_data = (void *)ev;
-    event_data->fd = ev->sd;
-    if(delEvent(event_data) < 0){
-        return -1;
-    }
-    if(ev->udp_sd_rtp != -1){
-        event_data->fd = ev->udp_sd_rtp;
-        if(delEvent(event_data) < 0){
-            return -1;
+    for(int i = 0; i < sizeof(ev->event_data) / sizeof(ev->event_data[0]); i++){
+        if(ev->event_data[i] != NULL){
+            if(delEvent(ev->event_data[i]) < 0){
+                return -1;
+            }
         }
     }
-    if(ev->udp_sd_rtp_1 != -1){
-        event_data->fd = ev->udp_sd_rtp_1;
-        if(delEvent(event_data) < 0){
-            return -1;
-        }
-    }
-    free(event_data);
     return 0;
 }
 static int delClient(event_data_ptr_t *event_data){
     struct clientinfo_st *clientinfo = (struct clientinfo_st *)event_data->user_data;
     int type = event_data->fd_type;
-    int fd = event_data->fd;
-    if(clientinfo == NULL || clientinfo->sd < 0){
+    socket_t fd = event_data->fd;
+    if(clientinfo == NULL || clientinfo->sd == INVALID_SOCKET){
         return -1;
     }
     if(eventDel(clientinfo) < 0){ // Delete all listening sockets(TCP/UDP)
         return -1;
-    }
-    if(event_data){
-        free(event_data);
     }
 #ifdef SESSION_DEBUG
     printf("client:%d offline\n", clientinfo->sd);
@@ -315,7 +304,7 @@ static void sendData(void *arg)
 static int get_free_clientinfo(int pos)
 {
     for(int i = 0; i < CLIENTMAX; i++){
-        if(session_arr[pos]->clientinfo[i].sd == -1){
+        if(session_arr[pos]->clientinfo[i].sd == INVALID_SOCKET){
             return i;
         }
     }
@@ -387,11 +376,14 @@ int initClient(struct session_st *session, struct clientinfo_st *clientinfo)
     if(session == NULL || clientinfo == NULL){
         return -1;
     }
-    clientinfo->sd = -1;
-    clientinfo->udp_sd_rtp = -1;
-    clientinfo->udp_sd_rtcp = -1;
-    clientinfo->udp_sd_rtp_1 = -1;
-    clientinfo->udp_sd_rtcp_1 = -1;
+    clientinfo->sd = INVALID_SOCKET;
+    clientinfo->udp_sd_rtp = INVALID_SOCKET;
+    clientinfo->udp_sd_rtcp = INVALID_SOCKET;
+    clientinfo->udp_sd_rtp_1 = INVALID_SOCKET;
+    clientinfo->udp_sd_rtcp_1 = INVALID_SOCKET;
+    for(int i = 0; i < sizeof(clientinfo->event_data) / sizeof(clientinfo->event_data[0]); i++){
+        clientinfo->event_data[i] = NULL;
+    }
     memset(clientinfo->client_ip, 0, sizeof(clientinfo->client_ip));
     clientinfo->client_rtp_port = -1;
     clientinfo->client_rtp_port_1 = -1;
@@ -429,25 +421,31 @@ int clearClient(struct clientinfo_st *clientinfo)
     if(clientinfo == NULL){
         return -1;
     }
-    if(clientinfo->sd > 0){
+    if(clientinfo->sd != INVALID_SOCKET){
         closeSocket(clientinfo->sd);
-        clientinfo->sd = -1;
+        clientinfo->sd = INVALID_SOCKET;
     }
-    if(clientinfo->udp_sd_rtp > 0){
+    if(clientinfo->udp_sd_rtp != INVALID_SOCKET){
         closeSocket(clientinfo->udp_sd_rtp);
-        clientinfo->udp_sd_rtp = -1;
+        clientinfo->udp_sd_rtp = INVALID_SOCKET;
     }
-    if(clientinfo->udp_sd_rtcp > 0){
+    if(clientinfo->udp_sd_rtcp != INVALID_SOCKET){
         closeSocket(clientinfo->udp_sd_rtcp);
-        clientinfo->udp_sd_rtcp = -1;
+        clientinfo->udp_sd_rtcp = INVALID_SOCKET;
     }
-    if(clientinfo->udp_sd_rtp_1 > 0){
+    if(clientinfo->udp_sd_rtp_1 != INVALID_SOCKET){
         closeSocket(clientinfo->udp_sd_rtp_1);
-        clientinfo->udp_sd_rtp_1 = -1;
+        clientinfo->udp_sd_rtp_1 = INVALID_SOCKET;
     }
-    if(clientinfo->udp_sd_rtcp_1 > 0){
+    if(clientinfo->udp_sd_rtcp_1 != INVALID_SOCKET){
         closeSocket(clientinfo->udp_sd_rtcp_1);
-        clientinfo->udp_sd_rtcp_1 = -1;
+        clientinfo->udp_sd_rtcp_1 = INVALID_SOCKET;
+    }
+    for(int i = 0; i < sizeof(clientinfo->event_data) / sizeof(clientinfo->event_data[0]); i++){
+        if(clientinfo->event_data[i] != NULL){
+            free(clientinfo->event_data[i]);
+            clientinfo->event_data[i] = NULL;
+        }
     }
     memset(clientinfo->client_ip, 0, sizeof(clientinfo->client_ip));
     clientinfo->client_rtp_port = -1;
@@ -573,11 +571,11 @@ struct MediaPacket_st getFrameFromList2(struct clientinfo_st *clientinfo){
     return node;
 }
 int createClient(struct clientinfo_st *clientinfo, 
-    int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
-    int server_rtp_fd, int server_rtcp_fd, int server_rtp_fd_1, int server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
+    socket_t client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
+    socket_t server_rtp_fd, socket_t server_rtcp_fd, socket_t server_rtp_fd_1, socket_t server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
     )
 {
-    if((clientinfo == NULL) || (client_sock_fd < 0)){
+    if((clientinfo == NULL) || (client_sock_fd == INVALID_SOCKET)){
         return -1;
     }
     clientinfo->sd = client_sock_fd;
@@ -626,7 +624,7 @@ static int sendDataToClient(struct clientinfo_st *clientinfo, char *ptr, int ptr
     ret = getSessionAudioInfo(clientinfo->session, &sample_rate, &channels, &profile);
     enum AUDIO_e audio_type = getSessionAudioType(clientinfo->session);
     if(type == VIDEO){
-        if(clientinfo->udp_sd_rtp != -1){ // udp
+        if(clientinfo->udp_sd_rtp != INVALID_SOCKET){ // udp
             switch(video_type){
                 case VIDEO_H264:
                     ret = rtpSendH264Frame(clientinfo->udp_sd_rtp, NULL, clientinfo->rtp_packet, ptr, ptr_len, 0, -1, clientinfo->client_ip, clientinfo->client_rtp_port);
@@ -652,7 +650,7 @@ static int sendDataToClient(struct clientinfo_st *clientinfo, char *ptr, int ptr
         }
     }
     else if(type == AUDIO){
-        if(clientinfo->udp_sd_rtp_1 != -1){ // udp
+        if(clientinfo->udp_sd_rtp_1 != INVALID_SOCKET){ // udp
             switch(audio_type){
                 case AUDIO_AAC:
                     ret = rtpSendAACFrame(clientinfo->udp_sd_rtp_1, NULL, clientinfo->rtp_packet_1, ptr, ptr_len, sample_rate, channels, profile, -1, clientinfo->client_ip, clientinfo->client_rtp_port_1);
@@ -692,7 +690,7 @@ static void mediaCallBack(void *arg){
     int ret = 0;
     mthread_mutex_lock(&session->mut);
     for(int i = 0; i < CLIENTMAX; i++){
-        if(session->clientinfo[i].sd != -1 && session->clientinfo[i].send_call_back != NULL && session->clientinfo[i].playflag == 1){
+        if(session->clientinfo[i].sd != INVALID_SOCKET && session->clientinfo[i].send_call_back != NULL && session->clientinfo[i].playflag == 1){
 #ifdef SEND_DATA_EVENT
             session->clientinfo[i].send_call_back(&session->clientinfo[i]);
 #else
@@ -735,8 +733,8 @@ static void reloopCallBack(void *arg){
 }
 /*Create a file session and add one client*/
 int addFileSession(char *path_filename, 
-    int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
-    int server_rtp_fd, int server_rtcp_fd, int server_rtp_fd_1, int server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
+    socket_t client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
+    socket_t server_rtp_fd, socket_t server_rtcp_fd, socket_t server_rtp_fd_1, socket_t server_rtcp_fd_1, char *client_ip, int client_rtp_port, int client_rtp_port_1 /*udp*/
     )
 {
     if(path_filename == NULL){
@@ -844,7 +842,7 @@ static int delAndFreeSession(struct session_st *session){
 #endif
     mthread_mutex_lock(&session->mut);
     for(int i = 0; i < CLIENTMAX; i++){
-        if(session->clientinfo[i].sd > 0){
+        if(session->clientinfo[i].sd != INVALID_SOCKET){
             client_num++;
             eventDel(&session->clientinfo[i]);
         }
@@ -918,7 +916,7 @@ int sendVideoData(void *context, uint8_t *data, int data_len){
     int ret = 0;
     mthread_mutex_lock(&session->mut);
     for (int i = 0; i < CLIENTMAX; i++){
-        if (session->clientinfo[i].sd != -1 && session->clientinfo[i].playflag == 1){
+        if (session->clientinfo[i].sd != INVALID_SOCKET && session->clientinfo[i].playflag == 1){
             struct clientinfo_st *clientinfo = &session->clientinfo[i];
 #ifdef SEND_DATA_EVENT
             mthread_mutex_lock(&clientinfo->mut_list);
@@ -960,7 +958,7 @@ int sendAudioData(void *context, uint8_t *data, int data_len){
     int ret = 0;
     mthread_mutex_lock(&session->mut);
     for (int i = 0; i < CLIENTMAX; i++){
-        if (session->clientinfo[i].sd != -1 && session->clientinfo[i].playflag == 1){
+        if (session->clientinfo[i].sd != INVALID_SOCKET && session->clientinfo[i].playflag == 1){
             struct clientinfo_st *clientinfo = &session->clientinfo[i];
 #ifdef SEND_DATA_EVENT
             mthread_mutex_lock(&clientinfo->mut_list);
@@ -1114,9 +1112,9 @@ int sessionGenerateSDP(char *suffix, char *localIp, char *buffer, int buffer_len
 
 /*add one client*/
 int addClient(char* suffix, 
-    int client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
+    socket_t client_sock_fd, int sig_0, int sig_2, int ture_of_tcp, /*tcp*/
     char *client_ip, int client_rtp_port,int client_rtp_port_1, /*client udp info*/
-    int server_udp_socket_rtp, int server_udp_socket_rtcp, int server_udp_socket_rtp_1, int server_udp_socket_rtcp_1 /*udp socket*/
+    socket_t server_udp_socket_rtp, socket_t server_udp_socket_rtcp, socket_t server_udp_socket_rtp_1, socket_t server_udp_socket_rtcp_1 /*udp socket*/
     )
 {
 #ifdef SESSION_DEBUG

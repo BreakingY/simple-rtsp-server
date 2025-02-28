@@ -4,6 +4,7 @@
 #define EPOLL_MAX   1024
 static int epoll_fd;
 static int run_flag = 1;
+static int event_listen_cnt = 0;
 static mthread_mutex_t mut_epoll;
 event_callbacks_t event_callbacks = {NULL, NULL, NULL};
 void setEventCallback(event_callback_t event_in, event_callback_t event_out, event_callback_t event_close){
@@ -29,36 +30,44 @@ int closeEvent(){
     return 0;
 }
 int addEvent(int events, event_data_ptr_t *event_data){
+    if(event_data == NULL){
+        printf("addEvent failed [event_listen_cnt=%d]\n", event_listen_cnt);
+    }
     mthread_mutex_lock(&mut_epoll);
     struct epoll_event epv = {0, {0}};
     epv.data.ptr = event_data;
     event_data->events = events;
     epv.events = events;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_data->fd, &epv) < 0){
-        printf("addEvent failed [fd=%d]\n", event_data->fd);
+        printf("addEvent failed [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
         mthread_mutex_unlock(&mut_epoll);
         return -1;
     }
     else{
+        event_listen_cnt++;
 #ifdef EVENT_DEBUG
-        printf("addEvent OK [fd=%d]\n", event_data->fd);
+        printf("addEvent OK [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
 #endif
     }
     mthread_mutex_unlock(&mut_epoll);
     return 0;
 }
 int delEvent(event_data_ptr_t *event_data){
+    if(event_data == NULL){
+        printf("eventDel failed [event_listen_cnt=%d]\n", event_listen_cnt);
+    }
     mthread_mutex_lock(&mut_epoll);
     struct epoll_event epv = {0, {0}};
     epv.data.ptr = NULL;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, event_data->fd, &epv) < 0){
-        printf("eventDel failed [fd=%d]\n", event_data->fd);
+        printf("delEvent failed [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
         mthread_mutex_unlock(&mut_epoll);
         return -1;
     }
     else{
+        event_listen_cnt--;
 #ifdef EVENT_DEBUG
-        printf("delEvent OK [fd=%d]\n", event_data->fd);
+        printf("delEvent OK [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
 #endif
     }
     mthread_mutex_unlock(&mut_epoll);
@@ -101,7 +110,7 @@ void *startEventLoop(void *arg){
                 }
             }
         }
-        usleep(1000 * 10); // 10ms
+        m_sleep(10); // 10ms
     }
     return NULL;
 }

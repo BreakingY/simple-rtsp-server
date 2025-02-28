@@ -30,6 +30,9 @@ int closeEvent(){
 }
 
 int addEvent(int events, event_data_ptr_t *event_data){
+    if(event_data == NULL){
+        printf("addEvent failed [event_listen_cnt=%d]\n", event_listen_cnt);
+    }
     event_data->events = events;
     mthread_mutex_lock(&mut_select);
     for(int i = 0; i < SELECT_MAX; i++){
@@ -38,32 +41,38 @@ int addEvent(int events, event_data_ptr_t *event_data){
             event_listen_cnt++;
             mthread_mutex_unlock(&mut_select);
 #ifdef EVENT_DEBUG
-            printf("addEvent OK [fd=%d]\n", event_data->fd);
+            printf("addEvent OK [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
 #endif
             return 0;
         }
     }
     mthread_mutex_unlock(&mut_select);
-    printf("addEvent failed [fd=%d]\n", event_data->fd);
+    printf("addEvent failed [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
     return -1;
 }
 
 int delEvent(event_data_ptr_t *event_data){
+    if(event_data == NULL){
+        printf("eventDel failed [event_listen_cnt=%d]\n", event_listen_cnt);
+    }
     mthread_mutex_lock(&mut_select);
 
     for(int i = 0; i < SELECT_MAX; i++){
-        if(event_listen[i] == event_data){
+        if(event_listen[i] == NULL){
+            continue;
+        }
+        if(event_listen[i] == event_data || event_listen[i]->fd == event_data->fd){
             event_listen[i] = NULL;
             event_listen_cnt--;
             mthread_mutex_unlock(&mut_select);
 #ifdef EVENT_DEBUG
-            printf("delEvent OK [fd=%d]\n", event_data->fd);
+            printf("delEvent OK [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
 #endif
             return 0;
         }
     }
     mthread_mutex_unlock(&mut_select);
-    printf("eventDel failed [fd=%d]\n", event_data->fd);
+    printf("delEvent failed [fd=%d] [event_listen_cnt=%d] [addr:%p]\n", event_data->fd, event_listen_cnt, event_data);
     return -1;
 }
 
@@ -84,10 +93,8 @@ void *startEventLoop(void *arg){
         except_cnt = 0;
         max_fd = 0;
         mthread_mutex_lock(&mut_select);
-        event_data_ptr_t *event_listen_copy[SELECT_MAX];
-        memcpy(event_listen_copy, event_listen, sizeof(event_listen_copy));
         for(int i = 0; i < SELECT_MAX; i++){
-            event_data_ptr_t *event_data = event_listen_copy[i];
+            event_data_ptr_t *event_data = event_listen[i];
             if(event_data != NULL){
                 if(event_data->events & EVENT_IN){
                     FD_SET(event_data->fd, &read_fds);
@@ -106,16 +113,16 @@ void *startEventLoop(void *arg){
                 }
             }
         }
+        mthread_mutex_unlock(&mut_select);
         if(read_cnt == 0 && write_cnt == 0 && except_cnt == 0){
-            Sleep(10);
-            mthread_mutex_unlock(&mut_select);
+            m_sleep(10);
             continue;
         }
+        
         struct timeval timeout;
         timeout.tv_sec = 0;
         timeout.tv_usec = 20000; // 20ms
         int nfd = select(max_fd + 1, &read_fds, &write_fds, &except_fds, &timeout);
-        mthread_mutex_unlock(&mut_select);
         if(nfd < 0){
             printf("select error, exit\n");
             exit(-1);
@@ -123,7 +130,7 @@ void *startEventLoop(void *arg){
         if(nfd != 0){
             int close_flag = 0;
             for(int i = 0; i < SELECT_MAX; i++){
-                event_data_ptr_t *event_data = event_listen_copy[i];
+                event_data_ptr_t *event_data = event_listen[i];
                 if(event_data == NULL){
                     continue;
                 }
@@ -149,10 +156,9 @@ void *startEventLoop(void *arg){
                         event_callbacks.event_close(event_data);
                     }
                 }
-
             }
         }
-        Sleep(10); // Sleep 10ms
+        m_sleep(10); // Sleep 10ms
     }
     return NULL;
 }

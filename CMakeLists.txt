@@ -28,6 +28,8 @@ set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ./)
 add_library(rtsp_server SHARED ${SRC} ${RTP} ${IO_EVENT} ${3RD})
 if(WIN32)
+    # Set the function stack size to 6MB
+    add_compile_options(-Wl,--stack,6000000)
     target_link_libraries(rtsp_server ws2_32)
 elseif(UNIX)
     target_link_libraries(rtsp_server pthread)

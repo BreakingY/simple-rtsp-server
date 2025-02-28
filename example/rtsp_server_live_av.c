@@ -103,12 +103,16 @@ int mpeg2_h264_new_access_unit(uint8_t *buffer, int len){
     return 0;
 }
 void *sendVideoDataThd(void *arg){
-    FILE *fp = fopen(file, "r");
+    FILE *fp = fopen(file, "rb");
     if(fp == NULL){
         printf("file not exist\n");
         exit(0);
     }
-    uint8_t frame[BUFFER];
+    uint8_t *frame= (uint8_t*)malloc(BUFFER);
+    if(frame == NULL){
+        printf("malloc error\n");
+        exit(0);
+    }
     int frame_size = 0;
     int fps = 25;
     int start_code;
@@ -133,6 +137,9 @@ void *sendVideoDataThd(void *arg){
         if(ret < 0){
             printf("sessionSendVideoData error\n");
         }
+    }
+    if(frame){
+        free(frame);
     }
     return NULL;
 }
@@ -202,7 +209,7 @@ static int parseAdtsHeader(uint8_t *in, int len, adts_header_info *res){
     return 0;
 }
 void *sendAudioDataThd(void *arg){
-    FILE *fp = fopen(file_audio, "r");
+    FILE *fp = fopen(file_audio, "rb");
     if(fp == NULL){
         printf("file not exist\n");
         exit(0);

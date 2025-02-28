@@ -32,7 +32,7 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
 #endif
 
     server_sock_fd = createTcpSocket();
-    if(server_sock_fd < 0){
+    if(server_sock_fd == INVALID_SOCKET){
         printf("failed to create tcp socket\n");
         return -1;
     }
@@ -55,7 +55,7 @@ int rtspStartServer(int auth, const char *server_ip, int server_port, const char
         mthread_t tid;
 
         client_sock_fd = acceptClient(server_sock_fd, client_ip, &client_port, 2000);
-        if(client_sock_fd <= 0){
+        if(client_sock_fd == INVALID_SOCKET){
             // printf("failed to accept client or timeout\n");
             continue;
         }
