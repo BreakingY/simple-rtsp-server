@@ -245,8 +245,7 @@ int sendWithTimeout(socket_t sockfd, const char *buffer, size_t len, int timeout
         return send(sockfd, buffer, len, 0);
     }
 }
-
-int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip, int port){
+int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip, int port, int timeout/*ms*/){
     struct sockaddr_in dest_addr;
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
@@ -256,17 +255,44 @@ int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip,
 #elif defined(_WIN32) || defined(_WIN64)
     dest_addr.sin_addr.S_un.S_addr = inet_addr(ip);
 #endif
+    if(timeout != 0){
+        fd_set write_fds;
+        struct timeval tv;
+        tv.tv_sec = timeout / 1000;
+        tv.tv_usec = (timeout % 1000) * 1000;
+
+        FD_ZERO(&write_fds);
+        FD_SET(sockfd, &write_fds);
+
+        int ret = select(sockfd + 1, NULL, &write_fds, NULL, &tv);
+        if(ret <= 0){ 
+            return -1;
+        }
+    }
     ssize_t sent_bytes = sendto(sockfd, message, length, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
     return sent_bytes;
 }
-
-int recvUDP(socket_t sockfd, char *buffer, size_t buffer_len, char *ip, int *port){
+int recvUDP(socket_t sockfd, char *buffer, size_t buffer_len, char *ip, int *port, int timeout/*ms*/){
     struct sockaddr_in src_addr;
 #if defined(__linux__) || defined(__linux)
     socklen_t addr_len = sizeof(src_addr);
 #elif defined(_WIN32) || defined(_WIN64)
     int addr_len = sizeof(src_addr);
 #endif
+    if(timeout != 0){
+        fd_set read_fds;
+        struct timeval tv;
+        tv.tv_sec = timeout / 1000;
+        tv.tv_usec = (timeout % 1000) * 1000;
+
+        FD_ZERO(&read_fds);
+        FD_SET(sockfd, &read_fds);
+
+        int ret = select(sockfd + 1, &read_fds, NULL, NULL, &tv);
+        if(ret <= 0){
+            return -1;
+        }
+    }
     ssize_t recv_bytes = recvfrom(sockfd, buffer, buffer_len, 0, (struct sockaddr *)&src_addr, &addr_len);
     if(recv_bytes < 0){
         return recv_bytes;
@@ -282,4 +308,5 @@ int recvUDP(socket_t sockfd, char *buffer, size_t buffer_len, char *ip, int *por
     }
     return recv_bytes;
 }
+
     

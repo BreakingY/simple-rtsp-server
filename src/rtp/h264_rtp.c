@@ -48,7 +48,7 @@ int rtpSendH264Frame(socket_t sd, struct rtp_tcp_header *tcp_header, struct RtpP
             ret = sendWithTimeout(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + frame_size, 0);
         }
         else if(client_rtp_port != -1 && client_ip != NULL){ // rtp over udp
-            ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + frame_size, client_ip, client_rtp_port);
+            ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + frame_size, client_ip, client_rtp_port, 0);
         }
         else{
             printf("parameter error\n");
@@ -131,7 +131,7 @@ int rtpSendH264Frame(socket_t sd, struct rtp_tcp_header *tcp_header, struct RtpP
                 ret = sendWithTimeout(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, 0);
             }
             else if(client_rtp_port != -1 && client_ip != NULL){
-                ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, client_ip, client_rtp_port);
+                ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + PTK_RTP_TCP_MAX + 2, client_ip, client_rtp_port, 0);
             }
             else{
                 printf("parameter error\n");
@@ -179,7 +179,7 @@ int rtpSendH264Frame(socket_t sd, struct rtp_tcp_header *tcp_header, struct RtpP
                 ret = sendWithTimeout(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, 0);
             }
             else if(client_rtp_port != -1 && client_ip != NULL){
-                ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, client_ip, client_rtp_port);
+                ret = sendUDP(sd, (const char*)rtp_packet, RTP_HEADER_SIZE + remainPktSize + 2, client_ip, client_rtp_port, 0);
             }
             else{
                 printf("parameter error\n");

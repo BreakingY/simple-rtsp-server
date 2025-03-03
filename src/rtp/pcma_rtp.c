@@ -31,7 +31,7 @@ int rtpSendPCMAFrame(socket_t fd, struct rtp_tcp_header *tcp_header, struct RtpP
         ret = sendWithTimeout(fd, (const char*)rtp_packet, RTP_HEADER_SIZE + size, 0);
     }
     else if(client_ip != NULL && client_rtp_port != -1){ // udp
-        ret = sendUDP(fd, (const char*)rtp_packet, RTP_HEADER_SIZE + size, client_ip, client_rtp_port);
+        ret = sendUDP(fd, (const char*)rtp_packet, RTP_HEADER_SIZE + size, client_ip, client_rtp_port, 0);
     }
     if(ret <= 0){
         return -1;
