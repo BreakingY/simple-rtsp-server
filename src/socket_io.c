@@ -46,6 +46,25 @@ int closeSocket(socket_t sockfd){
 #endif
     return -1;
 }
+void setNonBlock(socket_t fd){
+#if defined(__linux) || defined(__linux__)
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#elif defined(_WIN32) || defined(_WIN64)
+    unsigned long on = 1;
+    ioctlsocket(fd, FIONBIO, &on);
+#endif
+}
+
+void setBlock(socket_t fd){
+#if defined(__linux) || defined(__linux__)
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags&(~O_NONBLOCK));
+#elif defined(_WIN32) || defined(_WIN64)
+    unsigned long on = 0;
+    ioctlsocket(fd, FIONBIO, &on);
+#endif
+}
 int bindSocketAddr(socket_t sockfd, const char *ip, int port)
 {
     struct sockaddr_in addr;
@@ -61,35 +80,39 @@ int bindSocketAddr(socket_t sockfd, const char *ip, int port)
 int serverListen(socket_t sockfd, int num){
     return listen(sockfd, num);
 }
-int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/){
-    struct sockaddr_in server_addr;
-    int ret;
-    fd_set write_fds;
-    struct timeval timeout_convert;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-#if defined(__linux__) || defined(__linux)
-    server_addr.sin_addr.s_addr = inet_addr(ip);
-#elif defined(_WIN32) || defined(_WIN64)
-    server_addr.sin_addr.S_un.S_addr = inet_addr(ip);
-#endif
-    if (timeout > 0) {
-        FD_ZERO(&write_fds);
-        FD_SET(sockfd, &write_fds);
-        timeout_convert.tv_sec = timeout / 1000;
-        timeout_convert.tv_usec = (timeout % 1000) * 1000;
 
-        ret = select(sockfd + 1, NULL, &write_fds, NULL, &timeout_convert);
-        if(ret <= 0){
-            return -1;
+int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/){
+    int is_connected = 1;
+    if (timeout > 0) {
+        setNonBlock(sockfd);
+    }
+    struct sockaddr_in addr = { 0 };
+    socklen_t addrlen = sizeof(addr);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+
+    if(connect(sockfd, (struct sockaddr *)&addr, addrlen) < 0){
+        if(timeout > 0){
+            is_connected = 0;
+            fd_set fd_write;
+            FD_ZERO(&fd_write);
+            FD_SET(sockfd, &fd_write);
+            struct timeval tv = {timeout / 1000, timeout % 1000 * 1000};
+            select((int)sockfd + 1, NULL, &fd_write, NULL, &tv);
+            if(FD_ISSET(sockfd, &fd_write)){
+                is_connected = 1;
+            }
+            setBlock(sockfd);
+        }
+        else{
+            is_connected = 0;
         }
     }
-    ret = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (ret < 0) {
-        return -1;
+    if(is_connected == 1){
+        return 0;
     }
-    return 0;
+    return -1;
 }
 socket_t acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
 {

@@ -34,6 +34,8 @@ int socketDestroy();
 socket_t createTcpSocket();
 socket_t createUdpSocket();
 int closeSocket(socket_t sockfd);
+void setNonBlock(socket_t fd);
+void setBlock(socket_t fd);
 int bindSocketAddr(socket_t sockfd, const char *ip, int port);
 int serverListen(socket_t sockfd, int num);
 int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/);
