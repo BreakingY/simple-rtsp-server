@@ -195,9 +195,7 @@ void *creatMedia(char *path_filename, void *data_call_back, void *close_call_bac
 
     mp4->context = NULL;
     mp4->fps = 0;
-    // av_init_packet(&mp4->av_pkt);
-    mp4->av_pkt.data = NULL;
-    mp4->av_pkt.size = 0;
+    memset(&mp4->av_pkt, 0, sizeof(mp4->av_pkt));
     mp4->curtimestamp = 0;
     mp4->bsf_ctx = NULL;
     mp4->video_type = VIDEO_NONE;
