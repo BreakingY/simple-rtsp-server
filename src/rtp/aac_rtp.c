@@ -9,7 +9,7 @@ int rtpSendAACFrame(socket_t fd, struct rtp_tcp_header *tcp_header, struct RtpPa
     // }
 
     // char adts_header_buf[7] = {0};
-    // adts_header(adts_header_buf, size,
+    // adtsHeader(adts_header_buf, size,
     //             profile,
     //             sample_rate,
     //             channels);

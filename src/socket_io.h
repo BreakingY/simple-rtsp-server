@@ -40,7 +40,7 @@ int bindSocketAddr(socket_t sockfd, const char *ip, int port);
 int serverListen(socket_t sockfd, int num);
 int connectToServer(socket_t sockfd, const char *ip, int port, int timeout/*ms*/);
 socket_t acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/);
-int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2);
+int createRtpSockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2);
 int recvWithTimeout(socket_t sockfd, char *buffer, size_t len, int timeout/*ms*/);
 int sendWithTimeout(socket_t sockfd, const char *buffer, size_t len, int timeout/*ms*/);
 int sendUDP(socket_t sockfd, const char *message, size_t length, const char *ip, int port, int timeout/*ms*/);

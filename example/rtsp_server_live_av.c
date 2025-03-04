@@ -20,7 +20,7 @@ const char *file;
 const char *file_audio;
 int run_flag = 1;
 void *context;
-static int start_code3(uint8_t *buffer, int len){
+static int startCode3(uint8_t *buffer, int len){
     if(len < 3){
         return 0;
     }
@@ -29,7 +29,7 @@ static int start_code3(uint8_t *buffer, int len){
     else
         return 0;
 }
-static int start_code4(uint8_t *buffer, int len){
+static int startCode4(uint8_t *buffer, int len){
     if(len < 4){
         return 0;
     }
@@ -38,11 +38,11 @@ static int start_code4(uint8_t *buffer, int len){
     else
         return 0;
 }
-static int get_start_code(uint8_t *buffer, int len){
-    if(start_code3(buffer, len)){
+static int getStartCode(uint8_t *buffer, int len){
+    if(startCode3(buffer, len)){
         return 3;
     }
-    else if(start_code4(buffer, len)){
+    else if(startCode4(buffer, len)){
         return 4;
     }
     return 0;
@@ -55,13 +55,13 @@ static uint8_t *findNextStartCode(uint8_t *buf, int len)
         return NULL;
 
     for (i = 0; i < len - 3; ++i) {
-        if (get_start_code(buf, len))
+        if (getStartCode(buf, len))
             return buf;
 
         ++buf;
     }
 
-    if (start_code3(buf, len))
+    if (startCode3(buf, len))
         return buf;
 
     return NULL;
@@ -74,7 +74,7 @@ static int getFrameFromH264File(FILE *fp, uint8_t *frame, int size)
     if (fp == NULL)
         return -1;
     r_size = fread(frame, 1, size, fp);
-    if(!get_start_code(frame, r_size)){
+    if(!getStartCode(frame, r_size)){
         return -1;
     }
     next_start_code = findNextStartCode(frame + 3, r_size - 3);
@@ -87,8 +87,8 @@ static int getFrameFromH264File(FILE *fp, uint8_t *frame, int size)
     }
     return frame_size;
 }
-int mpeg2_h264_new_access_unit(uint8_t *buffer, int len){
-    int start_code = get_start_code(buffer, len);
+int h264_new_access_unit(uint8_t *buffer, int len){
+    int start_code = getStartCode(buffer, len);
     if(len < (start_code + 2)){
         return 0;
     }
@@ -126,10 +126,10 @@ void *sendVideoDataThd(void *arg){
             break;
         }
         
-        start_code = get_start_code(frame, frame_size);
+        start_code = getStartCode(frame, frame_size);
         type = frame[start_code] & 0x1f;
         if(type == 5 || type == 1){
-            if(mpeg2_h264_new_access_unit(frame, frame_size)){
+            if(h264_new_access_unit(frame, frame_size)){
                 m_sleep(1000 / fps);
             }
         }

@@ -48,7 +48,7 @@ char *getLineFromBuf(char *buf, int len, char *line){
     }
     return buf;
 }
-static char *extract_value(const char *source, const char *key){
+static char *extractValue(const char *source, const char *key){
     const char *start = strstr(source, key);
     if (!start) {
         return NULL;
@@ -71,7 +71,7 @@ static char *extract_value(const char *source, const char *key){
     return value;
 }
 
-AuthorizationInfo *find_authorization(const char *request){
+AuthorizationInfo *findAuthorization(const char *request){
     const char *auth_start = strstr(request, "Authorization: ");
     if (!auth_start) {
         return NULL;
@@ -99,16 +99,16 @@ AuthorizationInfo *find_authorization(const char *request){
         return NULL;
     }
 
-    auth_info->username = extract_value(auth_value, "username");
-    auth_info->realm = extract_value(auth_value, "realm");
-    auth_info->nonce = extract_value(auth_value, "nonce");
-    auth_info->uri = extract_value(auth_value, "uri");
-    auth_info->response = extract_value(auth_value, "response");
+    auth_info->username = extractValue(auth_value, "username");
+    auth_info->realm = extractValue(auth_value, "realm");
+    auth_info->nonce = extractValue(auth_value, "nonce");
+    auth_info->uri = extractValue(auth_value, "uri");
+    auth_info->response = extractValue(auth_value, "response");
 
     free(auth_value);
     return auth_info;
 }
-AuthorizationInfo* find_authorization_by_value(const char *auth_value){
+AuthorizationInfo* findAuthorizationByValue(const char *auth_value){
     if(auth_value == NULL){
         return NULL;
     }
@@ -116,14 +116,14 @@ AuthorizationInfo* find_authorization_by_value(const char *auth_value){
     if (!auth_info) {
         return NULL;
     }
-    auth_info->username = extract_value(auth_value, "username");
-    auth_info->realm = extract_value(auth_value, "realm");
-    auth_info->nonce = extract_value(auth_value, "nonce");
-    auth_info->uri = extract_value(auth_value, "uri");
-    auth_info->response = extract_value(auth_value, "response");
+    auth_info->username = extractValue(auth_value, "username");
+    auth_info->realm = extractValue(auth_value, "realm");
+    auth_info->nonce = extractValue(auth_value, "nonce");
+    auth_info->uri = extractValue(auth_value, "uri");
+    auth_info->response = extractValue(auth_value, "response");
     return auth_info;
 }
-void free_authorization_info(AuthorizationInfo *auth_info){
+void freeAuthorizationInfo(AuthorizationInfo *auth_info){
     if (auth_info) {
         free(auth_info->username);
         free(auth_info->realm);
@@ -134,14 +134,14 @@ void free_authorization_info(AuthorizationInfo *auth_info){
     }
     return;
 }
-static void generate_random_string(char *buf, int length){
+static void generateRandomString(char *buf, int length){
     static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     for (size_t i = 0; i < length; i++) {
         buf[i] = charset[rand() % (sizeof(charset) - 1)];
     }
     return;
 }
-void generate_nonce(char *nonce, int length){
+void generateNonce(char *nonce, int length){
     if (length < 1) {
         nonce[0] = '\0';
         return;
@@ -150,7 +150,7 @@ void generate_nonce(char *nonce, int length){
     srand((unsigned int)time(NULL));
 
     char random_string[128] = {0};
-    generate_random_string(random_string, sizeof(random_string));
+    generateRandomString(random_string, sizeof(random_string));
 
     char timestamp[32];
     snprintf(timestamp, sizeof(timestamp), "%ld", (long)time(NULL));
@@ -168,7 +168,7 @@ void generate_nonce(char *nonce, int length){
     }
     return;
 }
-void generate_session_id(char *session_id, size_t size){
+void generateSessionId(char *session_id, size_t size){
     if (size < 9) {
         return;
     }
@@ -178,7 +178,7 @@ void generate_session_id(char *session_id, size_t size){
     snprintf(session_id, size, "%02ld%06d", timestamp % 100, random_part);
     return;
 }
-int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response){
+int authorizationVerify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response){
     // md5(username:realm:password)
     unsigned char res1[16];
     char res1_hex[33] = {0};
@@ -282,7 +282,7 @@ static int get_channel_config(int channels, int aactype){
     return channels;
 }
 #ifdef RTSP_FILE_SERVER
-int check_media_info(const char *filename, MediaInfo *info)
+int checkMediaInfo(const char *filename, MediaInfo *info)
 {
     AVFormatContext *format_ctx = NULL;
     int ret;
@@ -342,7 +342,7 @@ int check_media_info(const char *filename, MediaInfo *info)
 
     return 0;
 }
-void free_media_info(MediaInfo *info)
+void freeMediaInfo(MediaInfo *info)
 {
     // if (info->vps)
     // {
@@ -362,19 +362,19 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
 {
     memset(buffer, 0, buffer_len);
     MediaInfo info;
-    if(check_media_info(file, &info) != 0){
+    if(checkMediaInfo(file, &info) != 0){
         printf("server error\n");
-        free_media_info(&info);
+        freeMediaInfo(&info);
         return -1;
     }
     if(info.has_video && !info.is_video_h26x){
         printf("only support h264 h265\n");
-        free_media_info(&info);
+        freeMediaInfo(&info);
         return -1;
     }
     if(info.has_audio && !info.is_audio_aac_pcma){
         printf("only support aac pcma\n");
-        free_media_info(&info);
+        freeMediaInfo(&info);
         return -1;
     }
     sprintf(buffer, "v=0\r\n"
@@ -409,7 +409,7 @@ int generateSDP(char *file, char *localIp, char *buffer, int buffer_len)
                     RTP_PAYLOAD_TYPE_PCMA, RTP_PAYLOAD_TYPE_PCMA, info.audio_sample_rate, info.audio_channels);
         }
     }
-    free_media_info(&info);
+    freeMediaInfo(&info);
     return 0;
 }
 #endif
@@ -451,7 +451,7 @@ int generateSDPExt(char *localIp, char *buffer, int buffer_len, int video_type, 
     return 0;
 }
 // aactype = ffmpeg --> AVCodecParameters *codecpar->profile
-void adts_header(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels){
+void adtsHeader(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels){
 
     int audio_object_type = get_audio_obj_type(aactype);
     int sampling_frequency_index = get_sample_rate_index(frequency, aactype);

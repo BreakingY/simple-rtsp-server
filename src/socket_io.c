@@ -157,7 +157,7 @@ socket_t acceptClient(socket_t sockfd, char *ip, int *port, int timeout/*ms*/)
     }
     return INVALID_SOCKET;
 }
-int create_rtp_sockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
+int createRtpSockets(socket_t *fd1, socket_t *fd2, int *port1, int *port2)
 {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));

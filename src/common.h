@@ -106,19 +106,19 @@ void rtpHeaderInit(struct RtpPacket *rtpPacket, uint8_t csrcLen, uint8_t extensi
                    uint16_t seq, uint32_t timestamp, uint32_t ssrc);
 char *getLineFromBuf(char *buf, int len, char *line);
 
-AuthorizationInfo* find_authorization(const char *request);
-AuthorizationInfo* find_authorization_by_value(const char *auth_value);
-void free_authorization_info(AuthorizationInfo *auth_info);
-void generate_nonce(char *nonce, int length);
-void generate_session_id(char *session_id, size_t size);
-int authorization_verify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response);
+AuthorizationInfo* findAuthorization(const char *request);
+AuthorizationInfo* findAuthorizationByValue(const char *auth_value);
+void freeAuthorizationInfo(AuthorizationInfo *auth_info);
+void generateNonce(char *nonce, int length);
+void generateSessionId(char *session_id, size_t size);
+int authorizationVerify(char *username, char *password, char *realm, char *nonce, char *uri, char * method, char *response);
 
 #ifdef RTSP_FILE_SERVER
-int check_media_info(const char *filename, MediaInfo *info);
-void free_media_info(MediaInfo *info);
+int checkMediaInfo(const char *filename, MediaInfo *info);
+void freeMediaInfo(MediaInfo *info);
 int generateSDP(char *file, char *localIp, char *buffer, int buffer_len);
 #endif
 int generateSDPExt(char *localIp, char *buffer, int buffer_len, int video_type, int audio_type, int sample_rate, int profile, int channels);
-void adts_header(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels);
+void adtsHeader(char *adts_header_buffer, int data_len, int aactype, int frequency, int channels);
 uint32_t getTimestamp(uint32_t sample_rate);
 #endif

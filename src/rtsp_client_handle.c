@@ -51,8 +51,8 @@ void *doClientThd(void *arg)
     int pos = 0;
     int total_len = 0;
     int ret = 0;
-    generate_nonce(nonce, sizeof(nonce));
-    generate_session_id(session_id, sizeof(session_id));
+    generateNonce(nonce, sizeof(nonce));
+    generateSessionId(session_id, sizeof(session_id));
     while(1){
         int recv_len = recvWithTimeout(client_sock_fd, recv_buf + pos, BUF_MAX_SIZE - pos, 0);
         if (recv_len <= 0)
@@ -86,14 +86,14 @@ void *doClientThd(void *arg)
                     goto need_more_data;
                 }
                 else{
-                    AuthorizationInfo *auth_info = find_authorization_by_value((const char *)Authorization);
+                    AuthorizationInfo *auth_info = findAuthorizationByValue((const char *)Authorization);
                     // printf("nonce:%s\n", auth_info->nonce);
                     // printf("realm:%s\n", auth_info->realm);
                     // printf("response:%s\n", auth_info->response);
                     // printf("uri:%s\n", auth_info->uri);
                     // printf("username:%s\n", auth_info->username);
-                    ret = authorization_verify(arg_thd->user_name, arg_thd->password, realm, nonce, auth_info->uri, request_message.method, auth_info->response);
-                    free_authorization_info(auth_info);
+                    ret = authorizationVerify(arg_thd->user_name, arg_thd->password, realm, nonce, auth_info->uri, request_message.method, auth_info->response);
+                    freeAuthorizationInfo(auth_info);
                     if(ret < 0){
                         handleCmd_Unauthorized(send_buf, cseq, realm, nonce);
                         goto out;
@@ -182,11 +182,11 @@ void *doClientThd(void *arg)
         else if(!strcmp(request_message.method, "SETUP") && ture_of_rtp_tcp == 0){ // RTP_OVER_UDP
             sscanf(request_message.url, "rtsp://%[^:]:", local_ip);
             if(memcmp(track, "track0", 6) == 0){
-                create_rtp_sockets(&server_udp_socket_rtp_fd, &server_udp_socket_rtcp_fd, &server_rtp_port, &server_rtp_port);
+                createRtpSockets(&server_udp_socket_rtp_fd, &server_udp_socket_rtcp_fd, &server_rtp_port, &server_rtp_port);
                 handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port, server_rtp_port, session_id);
             }
             else{
-                create_rtp_sockets(&server_udp_socket_rtp_1_fd, &server_udp_socket_rtcp_1_fd, &server_rtp_port_1, &server_rtp_port_1);
+                createRtpSockets(&server_udp_socket_rtp_1_fd, &server_udp_socket_rtcp_1_fd, &server_rtp_port_1, &server_rtp_port_1);
                 handleCmd_SETUP_UDP(send_buf, cseq, client_rtp_port_1, server_rtp_port_1, session_id);
             }
         }
