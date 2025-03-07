@@ -9,6 +9,7 @@
 * MD5: https://github.com/talent518/md5
 * 博客：https://sunkx.blog.csdn.net/article/details/139490411
 * rtsp client: https://github.com/BreakingY/simple-rtsp-client
+* Windows编译环境搭建：https://sunkx.blog.csdn.net/article/details/146064215
   
 # 文件回放功能依赖ffmpeg
 * ffmpeg版本 >= 4.x，测试版本为4.0.5和4.4.5

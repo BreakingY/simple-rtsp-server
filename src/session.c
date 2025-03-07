@@ -753,6 +753,7 @@ int addFileSession(char *path_filename,
     struct session_st *session;
     session = malloc(sizeof(struct session_st));
     memset(session, 0, sizeof(struct session_st));
+    mthread_mutex_init(&session->mut, NULL);
     session->media = creatMedia(path_filename, mediaCallBack, reloopCallBack, session);
 
     session->filename = malloc(strlen(path_filename) + 1);
@@ -761,9 +762,7 @@ int addFileSession(char *path_filename,
 #ifdef SESSION_DEBUG
     printf("addFileSession:%s client_sock_fd:%d\n", session->filename, client_sock_fd);
 #endif
-    mthread_mutex_init(&session->mut, NULL);
     session->count = 0;
-
     session_arr[pos] = session;
     session->pos = pos;
     for(int j = 0; j < CLIENTMAX; j++){
