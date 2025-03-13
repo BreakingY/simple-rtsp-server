@@ -1,14 +1,16 @@
 cmake_minimum_required(VERSION 3.10)
 project (RTSPSERVER)
 
+option(RTSP_FILE_SERVER "Enable RTSP file server support" OFF)
+option(DEVICE_LIVE "Enable device live support" OFF)
+
 include_directories(./src ./src/rtp ./src/io_event ./3rdparty)
 aux_source_directory(./src SRC)
 aux_source_directory(./src/rtp RTP)
 aux_source_directory(./src/io_event IO_EVENT)
 aux_source_directory(./3rdparty 3RD)
-# If want to support file playback(rtsp file server), please open set(RTSP_FILE_SERVER FORCE)
-set(RTSP_FILE_SERVER FORCE)
-if(DEFINED  RTSP_FILE_SERVER)
+
+if(RTSP_FILE_SERVER)
     message(STATUS "RTSP_FILE_SERVER OK")
     add_definitions(-DRTSP_FILE_SERVER)
     # for ffmpeg lib
@@ -37,7 +39,7 @@ elseif(UNIX)
     target_link_libraries(rtsp_server pthread)
 endif()
 
-if(DEFINED  RTSP_FILE_SERVER)
+if(RTSP_FILE_SERVER)
     # rtsp file server, ffmpeg lib
     target_link_libraries(rtsp_server avutil avformat avcodec swscale swresample)
 endif()
@@ -50,3 +52,21 @@ target_link_libraries(rtsp_server_live rtsp_server)
 
 add_executable(rtsp_server_live_av ./example/rtsp_server_live_av.c)
 target_link_libraries(rtsp_server_live_av rtsp_server)
+
+if(DEVICE_LIVE)
+    message(STATUS "DEVICE_LIVE OK")
+    # for ffmpeg lib
+    if(WIN32)
+        include_directories("D:/msys64/mingw64/include")
+        include_directories("D:/msys64/home/sunkx1/ff-build/include")
+        link_directories("D:/msys64/mingw64/lib")
+        link_directories("D:/msys64/home/sunkx1/ff-build/lib")
+    elseif(UNIX)
+        include_directories(/usr/local/include)
+        link_directories(/usr/local/lib /usr/lib)
+    endif()
+    include_directories(./example/device)
+    aux_source_directory(./example/device DEVICE)
+    add_executable(rtsp_server_live_device ./example/rtsp_server_live_device.c ${DEVICE})
+    target_link_libraries(rtsp_server_live_device rtsp_server avutil avformat avcodec swscale swresample avdevice)
+endif()
