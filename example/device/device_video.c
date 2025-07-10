@@ -1,6 +1,6 @@
 #include "device_video.h"
 // #define OUTPUT_FILE "output.h264"
-#define FRAME_RATE 30
+#define FRAME_RATE  30 // ffmpeg -f dshow -list_options true -i video="Integrated Camera"
 static video_callback_t video_cb = NULL;
 static void *user = NULL;
 static int run_flag = 1;
@@ -16,6 +16,7 @@ int startVideoDeviceLoop(){
     char str[20];
     snprintf(str, sizeof(str), "%d", FRAME_RATE);
     av_dict_set(&options, "framerate", str, 0);
+    av_dict_set(&options, "rtbufsize", "10M", 0);
 	// av_dict_set(&options, "video_size", "640x480", 0);
 
     AVInputFormat *input_fmt = av_find_input_format(VIDEO_INPUT_FORMAT);
