@@ -11,14 +11,18 @@ int main(int argc, char *argv[])
 {
 #ifdef RTSP_FILE_SERVER
     if(argc < 3){
-        printf("./rtsp_server_file auth(0-not authentication; 1-authentication) loop(0-not loop 1-loop) dir_path(default:./mp4path)\n");
+        printf("./rtsp_server_file auth(0-not authentication; 1-authentication) loop(0-not loop 1-loop) dir_path(default:../mp4path)\n");
         return -1;
     }
     int auth = atoi(argv[1]);
     int file_reloop_flag = atoi(argv[2]);
+    const char *default_path = "../mp4path";
     char *dir_path = NULL;
     if(argc > 3){
         dir_path = argv[3];
+    }
+    else{
+        dir_path = (char *)default_path;
     }
     int ret = rtspModuleInit();
     if(ret < 0){

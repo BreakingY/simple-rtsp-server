@@ -34,7 +34,7 @@
 
 # Testing
 1. File playback
-* ./rtsp_server_file auth (authentication: 0-not authentication; 1-authentication) loop (file playback loop control: 0-not loop; 1-loop) dir_path (specified folder path, default: ./mp4path)
+* ./rtsp_server_file auth (authentication: 0-not authentication; 1-authentication) loop (file playback loop control: 0-not loop; 1-loop) dir_path (specified folder path, default: ../mp4path)
 * Place the MP4/MKV files you want to play back in dir_path. The project includes four test files (MP4/MKV).
 * Example: ./rtsp_server_file 1 1 ../mp4path/
 * rtsp://admin:123456@ip:8554/filename

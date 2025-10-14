@@ -33,7 +33,7 @@
 
 # 测试
 1. 文件回放
-* ./rtsp_server_file auth(鉴权 0-not authentication; 1-authentication) loop(文件回放循环控制 0-not loop 1-loop) dir_path(指定文件夹路径 default:./mp4path)
+* ./rtsp_server_file auth(鉴权 0-not authentication; 1-authentication) loop(文件回放循环控制 0-not loop 1-loop) dir_path(指定文件夹路径 default:../mp4path)
 * 把要回放的MP4/MKV文件放到dir_path中即可，项目自带了四个测试文件(MP4/MKV)
 * eg: ./rtsp_server_file 1 1 ../mp4path/
 * rtsp://admin:123456@ip:8554/文件名字
