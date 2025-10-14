@@ -46,7 +46,7 @@
 * ./rtsp_server_live_av auth (authentication: 0-not authentication; 1-authentication) file_path (h264: ../mp4path/test.h264) file_path (aac: ../mp4path/test.aac)
 * Example: ./rtsp_server_live_av 1 ../mp4path/test.h264 ../mp4path/test.aac
 * rtsp://admin:123456@ip:8554/live
-4. Camera and microphone live streaming(TODO: optimize)
+4. Camera and microphone live streaming
 * ./rtsp_server_live_device auth (authentication: 0-not authentication; 1-authentication)
 * Example: ./rtsp_server_live_device 1
 * rtsp://admin:123456@ip:8554/live

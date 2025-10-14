@@ -45,7 +45,7 @@
 * ./rtsp_server_live_av auth(鉴权 0-not authentication; 1-authentication) file_path(h264: ../mp4path/test.h264) file_path(aac: ../mp4path/test.aac)
 * eg: ./rtsp_server_live_av 1 ../mp4path/test.h264 ../mp4path/test.aac
 * rtsp://admin:123456@ip:8554/live
-4. 摄像头、麦克风直播(TODO:优化)
+4. 摄像头、麦克风直播
 * ./rtsp_server_live_device auth(鉴权 0-not authentication; 1-authentication)
 * eg: ./rtsp_server_live_device 1
 * rtsp://admin:123456@ip:8554/live
