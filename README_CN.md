@@ -13,7 +13,7 @@
 * Windows环境搭建：https://sunkx.blog.csdn.net/article/details/146064215
   
 # 文件回放功能和设备直播依赖ffmpeg
-* ffmpeg版本 >= 4.x，测试版本为4.0.5和4.4.5
+* ffmpeg版本 == 4.x，测试版本为4.0.5和4.4.5
 * 文件回放功能和设备直播是可以配置的
   * -DRTSP_FILE_SERVER=ON 开启文件回放功能
   * -DDEVICE_LIVE=ON 开启设备直播功能(rtsp_server_live_device.c)
