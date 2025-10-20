@@ -14,7 +14,7 @@
 * Setup on Windows: https://sunkx.blog.csdn.net/article/details/146064215
   
 # File playback and device live streaming depend on FFmpeg
-* FFmpeg version >= 4.x, tested versions: 4.0.5 and 4.4.5
+* FFmpeg version == 4.x, tested versions: 4.0.5 and 4.4.5
 * File playback and device live streaming can be configured
   * -DRTSP_FILE_SERVER=ON to enable file playback
   * -DDEVICE_LIVE=ON to enable device live streaming (rtsp_server_live_device.c)
